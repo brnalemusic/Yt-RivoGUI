@@ -65,11 +65,34 @@ if __name__ == '__main__':
     # Keep app/__init__.py synchronized with the updated version
     import re
     from pathlib import Path
-    app_init = Path(__file__).resolve().parent.parent / 'app' / '__init__.py'
+    root_dir = Path(__file__).resolve().parent.parent
+    app_init = root_dir / 'app' / '__init__.py'
     if app_init.exists():
         content = app_init.read_text(encoding='utf-8')
         new_content = re.sub(r'__version__\s*=\s*["\'][^"\']+["\']', f'__version__ = "{version}"', content)
         app_init.write_text(new_content, encoding='utf-8')
 
+    # Keep README.md synchronized with the updated version
+    readme = root_dir / 'README.md'
+    if readme.exists():
+        r_content = readme.read_text(encoding='utf-8')
+        r_content = re.sub(
+            r'https://img\.shields\.io/badge/version-[^"-]+-10B981',
+            f'https://img.shields.io/badge/version-{version}-10B981',
+            r_content
+        )
+        r_content = re.sub(
+            r'alt="Version [^"]+"',
+            f'alt="Version {version}"',
+            r_content
+        )
+        r_content = re.sub(
+            r'Yt-RivoGUI-v\d+\.\d+\.\d+\.\d+-windows\.zip',
+            f'Yt-RivoGUI-v{version}-windows.zip',
+            r_content
+        )
+        readme.write_text(r_content, encoding='utf-8')
+
     print(f'version={version} ({args.channel}), head={git_head}')
+
 

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.0.1.0-10B981?style=flat-square" alt="Version 0.0.1.0" />
+  <img src="https://img.shields.io/badge/version-0.0.2.0-10B981?style=flat-square" alt="Version 0.0.2.0" />
   <img src="https://img.shields.io/badge/python-3.10%2B-22C55E?style=flat-square" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/framework-pyside6-34D399?style=flat-square" alt="PySide6" />
   <img src="https://img.shields.io/badge/platform-windows%20(10%20%2F%2011%20x64)-10B981?style=flat-square" alt="Platform" />
@@ -55,7 +55,7 @@
 ### option a: standalone release (recommended for end users)
 
 1. download either:
-   - `Yt-RivoGUI-v0.0.1.0-windows.zip` (recommended; avoids browser heuristic download warnings).
+   - `Yt-RivoGUI-v0.0.2.0-windows.zip` (recommended; avoids browser heuristic download warnings).
    - `Yt-RivoGUI.exe` (direct standalone executable).
    from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required.
