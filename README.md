@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/version-0.0.1.0-10B981?style=flat-square" alt="Version 0.0.1.0" />
   <img src="https://img.shields.io/badge/python-3.10%2B-22C55E?style=flat-square" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/framework-pyside6-34D399?style=flat-square" alt="PySide6" />
-  <img src="https://img.shields.io/badge/platform-windows%20%7C%20linux%20%7C%20macos-43F4B2?style=flat-square" alt="Platform" />
+  <img src="https://img.shields.io/badge/platform-windows%20(10%20%2F%2011%20x64)-10B981?style=flat-square" alt="Platform" />
   <img src="https://img.shields.io/badge/license-unlicense-10B981?style=flat-square" alt="License" />
 </p>
 
@@ -21,7 +21,7 @@
 
 ## overview
 
-`yt-rivogui` is a standalone desktop application providing a streamlined graphical frontend for `yt-dlp`. designed around an obsidian-and-emerald minimalist theme, monospaced typography, and lowercase interface styling, it delivers full control over downloads while keeping the interface distraction-free and lightweight.
+`yt-rivogui` is a standalone desktop application providing a streamlined graphical frontend for `yt-dlp`. designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features an obsidian-and-emerald minimalist theme, monospaced typography, and lowercase interface styling, delivering full control over downloads while keeping the interface distraction-free, reliable, and lightweight.
 
 ---
 
@@ -170,7 +170,7 @@ releases are automated via github actions (`.github/workflows/release.yml` and `
    git tag v0.0.1.0
    git push origin master --tags
    ```
-3. github actions will automatically build `Yt-RivoGUI.exe` for windows and linux binaries, compute sha256 checksums, and publish them to a new github release.
+3. github actions will automatically build `Yt-RivoGUI.exe` for windows, compute sha256 checksums, and publish them to a new github release.
 
 ---
  

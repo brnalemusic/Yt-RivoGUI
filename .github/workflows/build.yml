@@ -182,15 +182,11 @@ jobs:
               f.write(f'matrix={json.dumps(matrix)}')
 
   gui:
-    name: gui (${{ matrix.os }})
+    name: gui (windows)
     needs: [process]
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     env:
       CHANNEL: ${{ inputs.channel }}
       ORIGIN: ${{ needs.process.outputs.origin }}
@@ -227,7 +223,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: build-gui-${{ matrix.os }}
+          name: build-gui-windows
           path: |
             dist/gui/**
           compression-level: 0

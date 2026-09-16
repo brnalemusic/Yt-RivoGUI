@@ -11,7 +11,7 @@
   * Implemented 100% lowercase monospaced visual hierarchy, custom styling, and live terminal stream.
   * Added intelligent bilingual system locale detection (`pt_BR` / `en_US`) with runtime switcher.
   * Integrated automated YouTube JS challenge solving via `yt-dlp-ejs` and robust retry engine.
-  * Created automated PyInstaller standalone single-file builds, SHA256 checksum generation, and test suites.
+  * Architected Windows-exclusive application packaging (Windows 10 / 11 64-bit), automated CI/CD workflows, and standalone verification suites.
 
 ### Support & Sponsorship
 If you find Yt-RivoGUI helpful and want to support its ongoing development:
