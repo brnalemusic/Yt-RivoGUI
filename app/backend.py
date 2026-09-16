@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -75,7 +76,7 @@ class ProgressInfo:
 
 @dataclass
 class DownloadOptions:
-    mode: str = 'video'  # 'video', 'audio', 'thumbnail_only'
+    mode: str = 'video'  # 'video', 'audio', 'split', 'thumbnail_only'
     video_quality: str = 'best'  # 'best', '2160p', '1440p', '1080p', '720p', '480p', '360p'
     video_format: str = 'mp4'  # 'mp4', 'mkv'
     audio_format: str = 'mp3'  # 'mp3', 'm4a', 'flac', 'wav', 'opus'
@@ -85,6 +86,7 @@ class DownloadOptions:
     download_subs: bool = False
     sub_lang: str = 'pt'  # 'pt', 'en', 'all'
     is_playlist: bool = False
+    video_muted: bool = False  # If True in split mode, strip audio stream from video container
     output_dir: str = ''
 
 
@@ -250,7 +252,7 @@ class YtDLBackend:
             # Audio-only extraction
             opts['format'] = 'bestaudio/best'
             audio_codec = options.audio_format.lower()
-            quality = options.audio_quality if options.audio_quality != 'best' else '0'
+            quality = options.audio_quality if (options.audio_quality != 'best' and audio_codec != 'wav') else '0'
 
             postprocessors.append({
                 'key': 'FFmpegExtractAudio',
@@ -258,9 +260,12 @@ class YtDLBackend:
                 'preferredquality': quality,
             })
 
-            if options.embed_thumbnail:
+            # Note: yt-dlp EmbedThumbnailPP does not support WAV. Skip to prevent EmbedThumbnailPPError.
+            if options.embed_thumbnail and audio_codec != 'wav':
                 opts['writethumbnail'] = True
                 postprocessors.append({'key': 'EmbedThumbnail'})
+            elif options.embed_thumbnail and audio_codec == 'wav' and log_callback:
+                log_callback('[aviso] arquivos .wav não suportam incorporação de capa; download continuará sem capa.')
 
             if options.embed_metadata:
                 postprocessors.append({
@@ -268,6 +273,66 @@ class YtDLBackend:
                     'add_chapters': True,
                     'add_metadata': True,
                 })
+
+        elif options.mode in ('split', 'video_audio'):
+            # Download video and audio separately
+            opts['keepvideo'] = True
+
+            res_limit = {
+                '2160p': '[height<=2160]',
+                '1440p': '[height<=1440]',
+                '1080p': '[height<=1080]',
+                '720p': '[height<=720]',
+                '480p': '[height<=480]',
+                '360p': '[height<=360]',
+            }.get(options.video_quality, '')
+
+            if res_limit:
+                opts['format'] = f'bestvideo{res_limit}+bestaudio/best{res_limit}/best'
+            else:
+                opts['format'] = 'bestvideo+bestaudio/best'
+
+            container = options.video_format.lower()
+            opts['merge_output_format'] = container
+
+            if options.download_subs:
+                opts['writesubtitles'] = True
+                opts['writeautomaticsub'] = True
+                if options.sub_lang == 'pt':
+                    opts['subtitleslangs'] = ['pt', 'pt-BR', 'pt-PT']
+                elif options.sub_lang == 'en':
+                    opts['subtitleslangs'] = ['en', 'en-US']
+                else:
+                    opts['subtitleslangs'] = ['pt', 'pt-BR', 'en', 'en-US']
+                postprocessors.append({'key': 'FFmpegEmbedSubtitle'})
+
+            if options.embed_metadata:
+                postprocessors.append({
+                    'key': 'FFmpegMetadata',
+                    'add_chapters': True,
+                    'add_metadata': True,
+                })
+
+            if options.embed_thumbnail:
+                opts['writethumbnail'] = True
+                postprocessors.append({
+                    'key': 'EmbedThumbnail',
+                    'already_have_thumbnail': True,
+                })
+
+            audio_codec = options.audio_format.lower()
+            quality = options.audio_quality if (options.audio_quality != 'best' and audio_codec != 'wav') else '0'
+
+            postprocessors.append({
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': audio_codec,
+                'preferredquality': quality,
+            })
+
+            if options.embed_thumbnail and audio_codec != 'wav':
+                postprocessors.append({'key': 'EmbedThumbnail'})
+            elif options.embed_thumbnail and audio_codec == 'wav' and log_callback:
+                log_callback('[aviso] arquivos .wav não suportam incorporação de capa no áudio.')
 
         else:
             # Video mode
@@ -316,6 +381,61 @@ class YtDLBackend:
 
         return opts
 
+    def _strip_audio(self, video_path: Path, log_callback: Callable[[str], None] | None = None) -> None:
+        """Removes audio stream from the video file using ffmpeg stream copy."""
+        if not video_path.exists():
+            return
+        temp_path = video_path.with_name(f'{video_path.stem}.tmp_muted{video_path.suffix}')
+        cmd = ['ffmpeg', '-y', '-i', str(video_path), '-c:v', 'copy', '-an', str(temp_path)]
+        try:
+            res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            if res.returncode == 0 and temp_path.exists():
+                temp_path.replace(video_path)
+                if log_callback:
+                    log_callback(f'✔ faixa de áudio removida do vídeo: {video_path.name}')
+            elif temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+        except Exception as err:
+            logger.warning('Failed to strip audio from %s: %s', video_path, err)
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
+
+    def _handle_split_entry(
+        self,
+        entry: dict[str, Any],
+        options: DownloadOptions,
+        log_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        """Finds both video and audio files in split mode and strips audio if requested."""
+        audio_path_str = entry.get('filepath')
+        video_path: Path | None = None
+        audio_path: Path | None = Path(audio_path_str) if audio_path_str else None
+
+        if audio_path and audio_path.exists():
+            candidate = audio_path.with_suffix(f'.{options.video_format.lower()}')
+            if candidate.exists():
+                video_path = candidate
+
+        if not video_path:
+            for f in entry.get('__files_to_move', {}).keys():
+                candidate = Path(f)
+                if candidate.suffix.lower() in ('.mp4', '.mkv') and candidate.exists():
+                    video_path = candidate
+                    break
+
+        if video_path and video_path.exists():
+            entry['video_path'] = str(video_path)
+            entry['_filename'] = str(video_path)
+            if options.video_muted:
+                self._strip_audio(video_path, log_callback)
+            if log_callback:
+                log_callback(f'✔ vídeo salvo: {video_path.name}')
+
+        if audio_path and audio_path.exists():
+            entry['audio_path'] = str(audio_path)
+            if log_callback:
+                log_callback(f'✔ áudio salvo: {audio_path.name}')
+
     def download(
         self,
         url: str,
@@ -330,4 +450,14 @@ class YtDLBackend:
             info = ydl.extract_info(url, download=True)
             if not info:
                 raise RuntimeError('nenhum dado retornado ou falha no download.')
+
+            if options.mode in ('split', 'video_audio'):
+                entries = info.get('entries')
+                if entries:
+                    for entry in entries:
+                        if entry:
+                            self._handle_split_entry(entry, options, log_callback)
+                else:
+                    self._handle_split_entry(info, options, log_callback)
+
             return info

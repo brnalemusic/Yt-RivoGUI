@@ -587,8 +587,12 @@ class MainWindow(QMainWindow):
         self.mode_group.addButton(self.radio_audio, 1)
         mode_row.addWidget(self.radio_audio)
 
+        self.radio_split = QRadioButton(self.i18n('mode_split'))
+        self.mode_group.addButton(self.radio_split, 2)
+        mode_row.addWidget(self.radio_split)
+
         self.radio_thumbnail = QRadioButton(self.i18n('mode_thumbnail'))
-        self.mode_group.addButton(self.radio_thumbnail, 2)
+        self.mode_group.addButton(self.radio_thumbnail, 3)
         mode_row.addWidget(self.radio_thumbnail)
 
         mode_row.addStretch()
@@ -624,6 +628,7 @@ class MainWindow(QMainWindow):
         self.audio_format_combo.addItem('flac', 'flac')
         self.audio_format_combo.addItem('wav', 'wav')
         self.audio_format_combo.addItem('opus', 'opus')
+        self.audio_format_combo.currentIndexChanged.connect(self._on_audio_format_changed)
 
         self.audio_quality_label = QLabel(self.i18n('audio_quality_label'))
         self.audio_quality_combo = QComboBox()
@@ -646,7 +651,7 @@ class MainWindow(QMainWindow):
 
         options_layout.addLayout(self.settings_grid)
 
-        # Checkbox Row 1: Embeds
+        # Checkbox Row 1: Embeds & Options
         check_row_1 = QHBoxLayout()
         check_row_1.setSpacing(16)
         self.chk_embed_thumb = QCheckBox(self.i18n('opt_embed_thumbnail'))
@@ -656,6 +661,12 @@ class MainWindow(QMainWindow):
         self.chk_embed_meta = QCheckBox(self.i18n('opt_embed_metadata'))
         self.chk_embed_meta.setChecked(True)
         check_row_1.addWidget(self.chk_embed_meta)
+
+        self.chk_video_muted = QCheckBox(self.i18n('opt_video_muted'))
+        self.chk_video_muted.setChecked(False)
+        self.chk_video_muted.setVisible(False)
+        check_row_1.addWidget(self.chk_video_muted)
+
         check_row_1.addStretch()
         options_layout.addLayout(check_row_1)
 
@@ -818,7 +829,9 @@ class MainWindow(QMainWindow):
 
         self.radio_video.setText(self.i18n('mode_video').lower())
         self.radio_audio.setText(self.i18n('mode_audio').lower())
+        self.radio_split.setText(self.i18n('mode_split').lower())
         self.radio_thumbnail.setText(self.i18n('mode_thumbnail').lower())
+        self.chk_video_muted.setText(self.i18n('opt_video_muted').lower())
 
         self.quality_label.setText(self.i18n('quality_label').lower())
         self.format_label.setText(self.i18n('format_label').lower())
@@ -860,17 +873,8 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.quality_combo.setCurrentIndex(idx)
 
-        # Update audio quality combo text
-        cur_aq = self.audio_quality_combo.currentData()
-        self.audio_quality_combo.clear()
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_best').lower(), 'best')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_320').lower(), '320')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_256').lower(), '256')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_192').lower(), '192')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_128').lower(), '128')
-        idx = self.audio_quality_combo.findData(cur_aq)
-        if idx >= 0:
-            self.audio_quality_combo.setCurrentIndex(idx)
+        # Update audio quality combo according to format
+        self._update_wav_state()
 
         # Update subtitle lang combo text
         cur_sl = self.sub_lang_combo.currentData()
@@ -881,6 +885,37 @@ class MainWindow(QMainWindow):
         idx = self.sub_lang_combo.findData(cur_sl)
         if idx >= 0:
             self.sub_lang_combo.setCurrentIndex(idx)
+
+    def _on_audio_format_changed(self) -> None:
+        self._update_wav_state()
+
+    def _update_wav_state(self) -> None:
+        is_wav = self.audio_format_combo.currentData() == 'wav'
+        cur_aq = self.audio_quality_combo.currentData()
+
+        self.audio_quality_combo.blockSignals(True)
+        self.audio_quality_combo.clear()
+        if is_wav:
+            self.audio_quality_combo.addItem(self.i18n('audio_quality_wav').lower(), '0')
+            self.audio_quality_combo.setEnabled(False)
+        else:
+            self.audio_quality_combo.addItem(self.i18n('audio_quality_best').lower(), 'best')
+            self.audio_quality_combo.addItem(self.i18n('audio_quality_320').lower(), '320')
+            self.audio_quality_combo.addItem(self.i18n('audio_quality_256').lower(), '256')
+            self.audio_quality_combo.addItem(self.i18n('audio_quality_192').lower(), '192')
+            self.audio_quality_combo.addItem(self.i18n('audio_quality_128').lower(), '128')
+            self.audio_quality_combo.setEnabled(True)
+            idx = self.audio_quality_combo.findData(cur_aq)
+            if idx >= 0:
+                self.audio_quality_combo.setCurrentIndex(idx)
+        self.audio_quality_combo.blockSignals(False)
+
+        if is_wav and self.radio_audio.isChecked():
+            self.chk_embed_thumb.setEnabled(False)
+            self.chk_embed_thumb.setToolTip(self.i18n('notice_wav_thumbnail').lower())
+        else:
+            self.chk_embed_thumb.setEnabled(True)
+            self.chk_embed_thumb.setToolTip('')
 
     def _on_language_changed(self, index: int) -> None:
         lang_code = self.lang_combo.itemData(index)
@@ -893,23 +928,30 @@ class MainWindow(QMainWindow):
     def _update_controls_visibility(self) -> None:
         is_video = self.radio_video.isChecked()
         is_audio = self.radio_audio.isChecked()
+        is_split = self.radio_split.isChecked()
         is_thumb = self.radio_thumbnail.isChecked()
 
-        self.quality_label.setVisible(is_video)
-        self.quality_combo.setVisible(is_video)
-        self.format_label.setVisible(is_video)
-        self.format_combo.setVisible(is_video)
+        show_video_opts = is_video or is_split
+        show_audio_opts = is_audio or is_split
 
-        self.audio_format_label.setVisible(is_audio)
-        self.audio_format_combo.setVisible(is_audio)
-        self.audio_quality_label.setVisible(is_audio)
-        self.audio_quality_combo.setVisible(is_audio)
+        self.quality_label.setVisible(show_video_opts)
+        self.quality_combo.setVisible(show_video_opts)
+        self.format_label.setVisible(show_video_opts)
+        self.format_combo.setVisible(show_video_opts)
 
+        self.audio_format_label.setVisible(show_audio_opts)
+        self.audio_format_combo.setVisible(show_audio_opts)
+        self.audio_quality_label.setVisible(show_audio_opts)
+        self.audio_quality_combo.setVisible(show_audio_opts)
+
+        self.chk_video_muted.setVisible(is_split)
         self.chk_embed_thumb.setVisible(not is_thumb)
         self.chk_embed_meta.setVisible(not is_thumb)
-        self.chk_subtitles.setVisible(is_video)
-        self.sub_lang_label.setVisible(is_video)
-        self.sub_lang_combo.setVisible(is_video)
+        self.chk_subtitles.setVisible(show_video_opts)
+        self.sub_lang_label.setVisible(show_video_opts)
+        self.sub_lang_combo.setVisible(show_video_opts)
+
+        self._update_wav_state()
 
     def _on_subtitles_toggled(self, checked: bool) -> None:
         self.sub_lang_combo.setEnabled(checked)
@@ -1048,6 +1090,15 @@ class MainWindow(QMainWindow):
             options.mode = 'audio'
             options.audio_format = self.audio_format_combo.currentData()
             options.audio_quality = self.audio_quality_combo.currentData()
+        elif self.radio_split.isChecked():
+            options.mode = 'split'
+            options.video_quality = self.quality_combo.currentData()
+            options.video_format = self.format_combo.currentData()
+            options.audio_format = self.audio_format_combo.currentData()
+            options.audio_quality = self.audio_quality_combo.currentData()
+            options.video_muted = self.chk_video_muted.isChecked()
+            options.download_subs = self.chk_subtitles.isChecked()
+            options.sub_lang = self.sub_lang_combo.currentData()
         elif self.radio_thumbnail.isChecked():
             options.mode = 'thumbnail_only'
         else:
@@ -1067,7 +1118,10 @@ class MainWindow(QMainWindow):
         self.btn_cancel.setEnabled(True)
         self.btn_open_file.setVisible(False)
         self.progress_bar.setValue(0)
-        self.status_label.setText(self.i18n('status_connecting').lower())
+        if options.mode == 'split':
+            self.status_label.setText(self.i18n('status_downloading_split').lower())
+        else:
+            self.status_label.setText(self.i18n('status_connecting').lower())
         self.status_dot.setStyleSheet('color: #10B981; font-size: 13px;')
 
         self.pct_box.val_widget.setText('0%')
@@ -1114,10 +1168,13 @@ class MainWindow(QMainWindow):
         self.btn_cancel.setEnabled(False)
         self.progress_bar.setValue(100)
         self.pct_box.val_widget.setText('100%')
-        self.status_label.setText(self.i18n('status_finished').lower())
+        if info.get('video_path') and info.get('audio_path'):
+            self.status_label.setText(self.i18n('status_finished_split').lower())
+        else:
+            self.status_label.setText(self.i18n('status_finished').lower())
         self.status_dot.setStyleSheet('color: #10B981; font-size: 13px;')
 
-        filename = info.get('_filename') or info.get('filename')
+        filename = info.get('_filename') or info.get('filename') or info.get('video_path') or info.get('audio_path')
         if filename and Path(filename).exists():
             self.last_downloaded_file = str(filename)
             self.btn_open_file.setVisible(True)

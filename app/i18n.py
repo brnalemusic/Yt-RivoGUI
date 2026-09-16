@@ -69,6 +69,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'alert_already_running': 'já existe um download em andamento.',
         'open_file': 'abrir arquivo',
         'language_label': 'idioma:',
+        'mode_split': 'vídeo + áudio (separados)',
+        'opt_video_muted': 'vídeo sem áudio (apenas vídeo)',
+        'audio_quality_wav': 'sem perdas (pcm)',
+        'notice_wav_thumbnail': 'o formato .wav não suporta capa embutida',
+        'status_downloading_split': 'baixando vídeo e áudio...',
+        'status_finished_split': 'download de vídeo e áudio concluído com sucesso!',
     },
     'en_US': {
         'app_title': 'yt-rivogui',
@@ -134,6 +140,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'alert_already_running': 'a download is already in progress.',
         'open_file': 'open file',
         'language_label': 'language:',
+        'mode_split': 'video + audio (separated)',
+        'opt_video_muted': 'video without audio (video only)',
+        'audio_quality_wav': 'lossless (pcm)',
+        'notice_wav_thumbnail': '.wav format does not support embedded cover art',
+        'status_downloading_split': 'downloading video and audio...',
+        'status_finished_split': 'video and audio downloaded successfully!',
     }
 }
 
