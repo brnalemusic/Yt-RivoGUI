@@ -4,6 +4,40 @@
 # To create a release, dispatch the https://github.com/yt-dlp/yt-dlp/actions/workflows/release.yml workflow on master
 -->
 
+### 0.0.1.0
+
+#### Core changes
+- [Remove "NO AI / NO LLM POLICY" references from issue templates and contributing guidelines](https://github.com/yt-dlp/yt-dlp/commit/1cda6e073312cd9025601f4734dbdd36d9b60cd8) by [pukkandan](https://github.com/pukkandan)
+- [utils]`download_range_func`: Update `__eq__` and `__repr__` to include `from_info` ([#16393](https://github.com/yt-dlp/yt-dlp/issues/16393)) by [atsushi2965](https://github.com/atsushi2965)
+- [feat(i18n): add internationalization support with Portuguese and English translations](https://github.com/yt-dlp/yt-dlp/commit/58156c6cfd0c09f06f5fbb5c639f96c51de46fe8) by [pukkandan](https://github.com/pukkandan)
+- **gui**: [Implement GUI application with download functionality and versioning support](https://github.com/yt-dlp/yt-dlp/commit/335a991864b86fca5d64c875be7a6a87eb8cf4a5) by [pukkandan](https://github.com/pukkandan)
+- **update**
+    - [Detect GitHub error page responses](https://github.com/yt-dlp/yt-dlp/commit/8377aa9555c308ca95630a28c1f91decd6c2235a) ([#17555](https://github.com/yt-dlp/yt-dlp/issues/17555)) by [bashonly](https://github.com/bashonly)
+    - [Remove bad advice](https://github.com/yt-dlp/yt-dlp/commit/5022b8c1192b643a19b2750e5989dd9212ab41dc) ([#17492](https://github.com/yt-dlp/yt-dlp/issues/17492)) by [bashonly](https://github.com/bashonly)
+- **utils**
+    - `devalue`: [Improve binary type parsing](https://github.com/yt-dlp/yt-dlp/commit/bbc809a1161d3bfca51fa36f59dda35556ee85a0) ([#16934](https://github.com/yt-dlp/yt-dlp/issues/16934)) by [doe1080](https://github.com/doe1080)
+    - `subs_list_to_dict`: [Fix empty value handling](https://github.com/yt-dlp/yt-dlp/commit/fcdbefb85f34059302215407b4a9f332eeffda23) ([#17311](https://github.com/yt-dlp/yt-dlp/issues/17311)) by [doe1080](https://github.com/doe1080)
+
+#### Extractor changes
+- [Do not warn on intentional generic results](https://github.com/yt-dlp/yt-dlp/commit/9caaf45401494e87a44562784a100e018e40f90e) ([#16683](https://github.com/yt-dlp/yt-dlp/issues/16683)) by [FraFraFra-LongD](https://github.com/FraFraFra-LongD)
+- **adn**: [Add `profile_id` extractor-arg](https://github.com/yt-dlp/yt-dlp/commit/e164eebe19a6cb1aa1db4b45a8d6eb46ed7fbb48) ([#17522](https://github.com/yt-dlp/yt-dlp/issues/17522)) by [arobase-che](https://github.com/arobase-che)
+- **applepodcasts**: [Fix token caching](https://github.com/yt-dlp/yt-dlp/commit/2f3929ba1a79996779deb4ad0d7b11368ca355ac) ([#17567](https://github.com/yt-dlp/yt-dlp/issues/17567)) by [tcely](https://github.com/tcely)
+- **bandcamp**: [Fix extractors](https://github.com/yt-dlp/yt-dlp/commit/1d1351f40f0cbccd113e5b1ad1a37621008361ff) ([#17546](https://github.com/yt-dlp/yt-dlp/issues/17546)) by [bashonly](https://github.com/bashonly)
+- **globalplayer**: [Fix extractors](https://github.com/yt-dlp/yt-dlp/commit/94eba4c156af080e87caf10cf8ffbea03bd17407) ([#17442](https://github.com/yt-dlp/yt-dlp/issues/17442)) by [LillieH1000](https://github.com/LillieH1000)
+- **go**: [Improve error handling](https://github.com/yt-dlp/yt-dlp/commit/66f49765d5a46c7be1c2c414f245c71530c4a2fd) ([#15882](https://github.com/yt-dlp/yt-dlp/issues/15882)) by [norepro](https://github.com/norepro)
+- **niconico**: channel: [Support channels](https://github.com/yt-dlp/yt-dlp/commit/81ecd58b1394793e6da9998cc19fdb45657f1685) ([#17398](https://github.com/yt-dlp/yt-dlp/issues/17398)) by [doe1080](https://github.com/doe1080)
+- **showroom**: [Fix extractor](https://github.com/yt-dlp/yt-dlp/commit/a2a8846b0d3ee87f5c31fc8615c790a84874dde7) ([#17488](https://github.com/yt-dlp/yt-dlp/issues/17488)) by [doe1080](https://github.com/doe1080), [wlerin](https://github.com/wlerin)
+- **ted**: [Fix extractor](https://github.com/yt-dlp/yt-dlp/commit/9fb5969797e79d5138605ae6c2ae59e2a6e3be55) ([#17510](https://github.com/yt-dlp/yt-dlp/issues/17510)) by [InvalidUsernameException](https://github.com/InvalidUsernameException)
+- **tubitv**
+    - [Improve extractor](https://github.com/yt-dlp/yt-dlp/commit/d1cb4709cc7cb6130a544ec9d5f5be40943aa383) ([#16428](https://github.com/yt-dlp/yt-dlp/issues/16428)) by [InvalidUsernameException](https://github.com/InvalidUsernameException)
+    - series: [Fix extractor](https://github.com/yt-dlp/yt-dlp/commit/2089f8ad37de3a197c14afa4fb2bf066324409fd) ([#17545](https://github.com/yt-dlp/yt-dlp/issues/17545)) by [InvalidUsernameException](https://github.com/InvalidUsernameException)
+- **twitch**: clips: [Fix extractor](https://github.com/yt-dlp/yt-dlp/commit/28d35b7762ee4fb8c1214b2d26e7a28630d03992) ([#17554](https://github.com/yt-dlp/yt-dlp/issues/17554)) by [bashonly](https://github.com/bashonly)
+
+#### Misc. changes
+- **cleanup**: [Remove obsolete Python compatibility code](https://github.com/yt-dlp/yt-dlp/commit/88a9516584a2de7e27ffdbcd39875d2bf4813378) ([#17357](https://github.com/yt-dlp/yt-dlp/issues/17357)) by [doe1080](https://github.com/doe1080)
+- **docs**: [Fix `Namespace` documentation](https://github.com/yt-dlp/yt-dlp/commit/3d062c86eab289a4dfd5b4f8c1992dc2a96e8c78) ([#17324](https://github.com/yt-dlp/yt-dlp/issues/17324)) by [doe1080](https://github.com/doe1080)
+- **test**: [Fix handshake error matching for OpenSSL 4.x](https://github.com/yt-dlp/yt-dlp/commit/91f784d6fd911c0b8fc91645a9ba61ded0a8abb4) ([#17491](https://github.com/yt-dlp/yt-dlp/issues/17491)) by [mikelolasagasti](https://github.com/mikelolasagasti)
+
 ### 2026.08.19
 
 #### Core changes

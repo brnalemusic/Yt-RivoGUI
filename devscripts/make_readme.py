@@ -38,6 +38,11 @@ def apply_patch(text, patch):
     return text if patch[0] is DISABLE_PATCH else re.sub(*patch, text)
 
 
+readme = read_file(README_FILE)
+if f'## {OPTIONS_START}' not in readme:
+    print(f'Notice: {OPTIONS_START} not found in {README_FILE}; preserving existing {README_FILE}.')
+    sys.exit(0)
+
 options = take_section(sys.stdin.read(), f'\n  {OPTIONS_START}', f'\n{EPILOG_START}', shift=1)
 
 max_width = max(map(len, options.split('\n')))
@@ -85,6 +90,10 @@ PATCHES = (
 )
 
 readme = read_file(README_FILE)
+
+if f'## {OPTIONS_START}' not in readme:
+    print(f'Notice: {OPTIONS_START} not found in {README_FILE}; skipping automatic overwrite.')
+    sys.exit(0)
 
 write_file(README_FILE, ''.join((
     take_section(readme, end=f'## {OPTIONS_START}'),
