@@ -2,7 +2,7 @@
 
 __version__ = '0.0.2.0'
 
-RELEASE_GIT_HEAD = 'bda1411b036fcb684d4f7e7686e73b46b49016ac'
+RELEASE_GIT_HEAD = '801e9bbdfb06774457a821e9e11d36f8f6cfae50'
 
 VARIANT = None
 

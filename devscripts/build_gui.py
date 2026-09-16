@@ -81,12 +81,23 @@ def build(onefile: bool = True, clean: bool = True, dist_dir: Path | None = None
     exe_file = dist_path / exe_name
     if exe_file.exists():
         import zipfile
-        try:
-            from app import __version__
-        except Exception:
-            __version__ = '0.0.1.0'
+        version_str = os.getenv('VERSION') or os.getenv('TARGET_TAG')
+        if not version_str:
+            try:
+                from app import __version__
+                version_str = __version__
+            except Exception:
+                version_str = '0.0.1.0'
+        version_str = str(version_str).lstrip('v')
 
-        zip_name = f'Yt-RivoGUI-v{__version__}-windows.zip'
+        # Clean any old zip files in dist_path to avoid obsolete versions
+        for old_zip in dist_path.glob('*.zip'):
+            try:
+                old_zip.unlink()
+            except Exception:
+                pass
+
+        zip_name = f'Yt-RivoGUI-v{version_str}-windows.zip'
         zip_path = dist_path / zip_name
         print(f'\nPacking standalone zip archive: {zip_path.name}...')
         with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
@@ -95,6 +106,7 @@ def build(onefile: bool = True, clean: bool = True, dist_dir: Path | None = None
             if readme_file.exists():
                 zf.write(readme_file, arcname='README.md')
         print(f'Zip archive created successfully: {zip_path.name} ({zip_path.stat().st_size / (1024 * 1024):.2f} MB)\n')
+
 
     # Generate hashes
     try:

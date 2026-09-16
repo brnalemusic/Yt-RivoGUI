@@ -62,4 +62,14 @@ if __name__ == '__main__':
         version=version, git_head=git_head, channel=args.channel, origin=args.origin,
         package_version=f'{version}{args.suffix}'))
 
+    # Keep app/__init__.py synchronized with the updated version
+    import re
+    from pathlib import Path
+    app_init = Path(__file__).resolve().parent.parent / 'app' / '__init__.py'
+    if app_init.exists():
+        content = app_init.read_text(encoding='utf-8')
+        new_content = re.sub(r'__version__\s*=\s*["\'][^"\']+["\']', f'__version__ = "{version}"', content)
+        app_init.write_text(new_content, encoding='utf-8')
+
     print(f'version={version} ({args.channel}), head={git_head}')
+
