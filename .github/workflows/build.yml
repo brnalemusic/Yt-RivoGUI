@@ -562,7 +562,7 @@ jobs:
       - macos
       - macos_verify
       - windows
-    if: always() && !failure() && !cancelled()
+    if: always() && !failure() && !cancelled() && (inputs.unix || inputs.linux || inputs.macos || inputs.windows)
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
