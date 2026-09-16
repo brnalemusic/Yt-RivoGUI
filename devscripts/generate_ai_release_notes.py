@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Generate AI-powered release notes for Yt-RivoGUI using Google Gemini API.
-Analyzes git commit log and diffs with context, generating a warm, cute, human-friendly summary in English.
+Analyzes git commit log and diffs with context, generating a warm, human-friendly,
+structured summary in English without emojis, using clean markdown, lists, and tables.
 """
 
 from __future__ import annotations
@@ -18,30 +19,40 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# Models to attempt in order (supports user override via GEMINI_MODEL)
+# Models to attempt in order (gemini-3.5-flash-lite is primary, supports user override via GEMINI_MODEL)
 DEFAULT_MODELS = [
     os.getenv("GEMINI_MODEL", "").strip(),
+    "gemini-3.5-flash-lite",
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
     "gemini-1.5-flash",
 ]
 MODELS = [m for m in DEFAULT_MODELS if m]
 
 SYSTEM_PROMPT = """\
-You are the official release notes writer for Yt-RivoGUI, a sleek, minimalist desktop YouTube and media downloader for Windows built with PySide6 and powered by yt-dlp technology.
+You are the release notes author for Yt-RivoGUI, a minimalist desktop YouTube and media downloader for Windows built with PySide6 and powered by yt-dlp technology.
 
-Your task is to write the release notes for the new version in English.
+Your task is to write warm, human, engaging, and beautifully structured release notes in English for this new version.
 
-Guidelines:
-1. Tone: Warm, charming, cute, friendly, and human ("fofa, humana e descontraída"), yet clear and organized. Use cute and relevant emojis (like ✨, 🌸, 🚀, 💻, 🎧, 📦, 🌿, etc.) naturally throughout the text.
-2. Length: Medium to long (around 300 to 500 words). Make it a pleasant read!
-3. Focus: Clearly summarize the changes, bug fixes, UI improvements, and new features based on the git diffs and commit log provided.
-4. Style: Explain the practical impact and benefits for the user. DO NOT dump raw code, commit hashes, or dry programming jargon. Make it understandable for regular humans and music/video enthusiasts.
+CRITICAL CONSTRAINTS:
+1. STRICTLY NO EMOJIS: Do NOT use any emojis, pictograms, or emoji symbols anywhere in the response. Zero emojis. The warmth, friendliness, and charm must come purely from your phrasing, tone, and vocabulary.
+2. Tone: Warm, human, welcoming, conversational, and thoughtful ("humana, calorosa e descontraida"), yet clean, polished, and easy to follow.
+3. Rich Markdown Structure:
+   - Use clear headings (## and ###).
+   - Include a neat Markdown summary table comparing or categorizing the main updates (for example: | Component | Changes | Impact on You |).
+   - Use clean, well-spaced bulleted lists for detailed feature and bugfix breakdowns.
+   - Use bold and italic text purposefully to emphasize key benefits.
+4. Input Analysis:
+   - You will receive both the list of all commit names and the full code diff (with 3 lines of context) comparing the previous version to the current version.
+   - Synthesize what was actually added, improved, fixed, or redesigned.
+   - Focus on practical benefits and user experience.
+   - DO NOT copy raw code, syntax blocks, diff patches, or raw git hashes into the main release narrative.
 5. Structure:
-   - A sweet, welcoming opening greeting for this new version.
-   - What's New & What Changed (broken down with cute subheadings or bullet points).
-   - A friendly download note (recommending the standalone .zip for Windows 10/11 x64).
-   - A heartwarming sign-off thanking everyone for using Yt-RivoGUI and supporting the project.
+   - Warm, friendly introduction welcoming users to the update.
+   - Summary Table: A concise table categorizing the key changes.
+   - Detailed Highlights: Organized bullet points explaining what is new, improved, or fixed.
+   - Download & Setup Guide: Clear instructions recommending the standalone Windows .zip package (Windows 10 / 11 64-bit).
+   - Sincere, appreciative closing thanking users for their support and feedback.
 """
 
 
@@ -89,37 +100,46 @@ def get_base_ref() -> str | None:
     return None
 
 
-def get_git_changes(base_ref: str | None) -> tuple[str, str]:
-    """Retrieve commit log and diff with 3 lines of context (-U3)."""
+def get_git_changes(base_ref: str | None) -> tuple[str, str, str]:
+    """
+    Retrieve commit names, commit log with hashes, and diff with context (-U3).
+    Returns (commit_names, commit_log, diff_text).
+    """
     range_spec = f"{base_ref}..HEAD" if base_ref else "HEAD~10..HEAD"
 
-    # Commit log
-    res = run_git("log", range_spec, "--oneline", "--no-merges")
-    commit_log = res.stdout.strip() if res.returncode == 0 else ""
+    # Commit names only
+    res_names = run_git("log", range_spec, "--pretty=format:%s", "--no-merges")
+    commit_names = res_names.stdout.strip() if res_names.returncode == 0 else ""
+
+    # Commit log with short hashes
+    res_log = run_git("log", range_spec, "--oneline", "--no-merges")
+    commit_log = res_log.stdout.strip() if res_log.returncode == 0 else ""
 
     if not commit_log:
-        res = run_git("log", "-n", "10", "--oneline", "--no-merges")
-        commit_log = res.stdout.strip() if res.returncode == 0 else "Recent updates to Yt-RivoGUI."
+        res_log = run_git("log", "-n", "10", "--oneline", "--no-merges")
+        commit_log = res_log.stdout.strip() if res_log.returncode == 0 else "Recent updates to Yt-RivoGUI."
+        res_names = run_git("log", "-n", "10", "--pretty=format:%s", "--no-merges")
+        commit_names = res_names.stdout.strip() if res_names.returncode == 0 else commit_log
 
-    # Git diff with context lines (-U3), filtering out binaries and builds
+    # Full git diff with 3 lines of context (-U3), filtering out binary files and build artifacts
     diff_args = [
         "diff", "-U3", range_spec,
         "--",
         ":!*.whl", ":!*.ico", ":!*.png", ":!*.jpg", ":!*.jpeg", ":!*.svg",
         ":!*.zip", ":!*.tar.gz", ":!dist/*", ":!build/*", ":!package-lock.json"
     ]
-    res = run_git(*diff_args)
-    diff_text = res.stdout.strip() if res.returncode == 0 else ""
+    res_diff = run_git(*diff_args)
+    diff_text = res_diff.stdout.strip() if res_diff.returncode == 0 else ""
 
     if not diff_text:
-        res = run_git("diff", "-U3", "HEAD^..HEAD", "--", ":!*.whl", ":!*.ico", ":!*.png", ":!dist/*", ":!build/*")
-        diff_text = res.stdout.strip() if res.returncode == 0 else ""
+        res_diff = run_git("diff", "-U3", "HEAD^..HEAD", "--", ":!*.whl", ":!*.ico", ":!*.png", ":!dist/*", ":!build/*")
+        diff_text = res_diff.stdout.strip() if res_diff.returncode == 0 else ""
 
-    # Limit diff text length to prevent exceeding token limits (~35k chars)
-    if len(diff_text) > 35000:
-        diff_text = diff_text[:35000] + "\n\n... [diff truncated for brevity] ..."
+    # Limit diff text length to prevent exceeding API limits (~40k chars)
+    if len(diff_text) > 40000:
+        diff_text = diff_text[:40000] + "\n\n... [diff truncated for brevity] ..."
 
-    return commit_log, diff_text
+    return commit_names, commit_log, diff_text
 
 
 def call_gemini(api_key: str, prompt: str, max_retries: int = 5, retry_delay: int = 10) -> str:
@@ -133,7 +153,7 @@ def call_gemini(api_key: str, prompt: str, max_retries: int = 5, retry_delay: in
         ],
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 2500,
+            "maxOutputTokens": 3000,
         }
     }
     data_bytes = json.dumps(payload).encode("utf-8")
@@ -153,7 +173,7 @@ def call_gemini(api_key: str, prompt: str, max_retries: int = 5, retry_delay: in
             )
 
             try:
-                with urllib.request.urlopen(req, timeout=40) as resp:
+                with urllib.request.urlopen(req, timeout=45) as resp:
                     resp_data = json.loads(resp.read().decode("utf-8"))
                     candidates = resp_data.get("candidates", [])
                     if candidates:
@@ -175,8 +195,8 @@ def call_gemini(api_key: str, prompt: str, max_retries: int = 5, retry_delay: in
                 last_error = f"HTTP {e.code}: {err_msg}"
 
                 if e.code == 404:
-                    print(f"[ai_release_notes] Model {model} returned 404, falling back to next model...", file=sys.stderr)
-                    break  # Break retry loop to try the next model candidate
+                    print(f"[ai_release_notes] Model '{model}' not found (404), trying next model...", file=sys.stderr)
+                    break  # Break retry loop for this model and fall back to the next model in MODELS
 
                 if attempt < max_retries:
                     print(f"[ai_release_notes] Waiting {retry_delay}s before retry...", file=sys.stderr)
@@ -195,15 +215,16 @@ def call_gemini(api_key: str, prompt: str, max_retries: int = 5, retry_delay: in
 def generate_notes(version: str, api_key: str | None = None) -> str:
     """Generate complete release notes markdown."""
     base_ref = get_base_ref()
-    commit_log, diff_text = get_git_changes(base_ref)
+    commit_names, commit_log, diff_text = get_git_changes(base_ref)
 
     ai_body = None
     if api_key:
         prompt = (
             f"{SYSTEM_PROMPT}\n\n"
             f"Release Version: {version}\n\n"
-            f"Commit Log:\n{commit_log}\n\n"
-            f"Code Diffs (with context):\n{diff_text}\n"
+            f"List of Commit Titles in this Release:\n{commit_names}\n\n"
+            f"Commit Log (with hashes):\n{commit_log}\n\n"
+            f"Full Code Diffs (with 3 lines of context):\n{diff_text}\n"
         )
         try:
             ai_body = call_gemini(api_key, prompt, max_retries=5, retry_delay=10)
@@ -211,16 +232,27 @@ def generate_notes(version: str, api_key: str | None = None) -> str:
             print(f"[ai_release_notes] Warning: AI generation failed: {err}. Falling back to default format.", file=sys.stderr)
 
     if not ai_body:
-        # Fallback friendly text when API key is not present or failed
+        # Fallback friendly text (strictly without emojis) when API key is not present or failed
+        table_rows = []
+        for line in commit_names.splitlines()[:6]:
+            clean_line = line.strip().lstrip("-* ").replace("|", "/")
+            if clean_line:
+                table_rows.append(f"| Update | {clean_line} | Enhanced stability and performance |")
+        table_str = "\n".join(table_rows)
+
         ai_body = (
-            f"### ✨ Welcome to Yt-RivoGUI v{version}!\n\n"
-            f"A fresh update for Yt-RivoGUI is here! This release brings improvements, fixes, "
-            f"and polished features to make your video and audio downloading experience even smoother.\n\n"
-            f"#### 🌸 Highlights in this release:\n"
-            f"{chr(10).join(f'- {line}' for line in commit_log.splitlines()[:8])}\n\n"
-            f"📦 **Download Note:** For the best experience on Windows 10/11 64-bit, download the "
-            f"`Yt-RivoGUI-v{version}-windows.zip` archive, extract it, and launch `Yt-RivoGUI.exe`.\n\n"
-            f"Thank you for your love and support! 💕"
+            f"### Welcome to Yt-RivoGUI v{version}\n\n"
+            f"We are happy to present a new update for Yt-RivoGUI. This release brings improvements, "
+            f"refinements, and fixes to ensure your media downloading experience remains smooth and dependable.\n\n"
+            f"#### Summary of Changes\n\n"
+            f"| Category | Change | Impact |\n"
+            f"| :--- | :--- | :--- |\n"
+            f"{table_str}\n\n"
+            f"#### Highlights in this Version\n\n"
+            f"{chr(10).join(f'- {line}' for line in commit_names.splitlines()[:8])}\n\n"
+            f"**Download Note:** For the best experience on Windows 10 and 11 64-bit, download the "
+            f"`Yt-RivoGUI-v{version}-windows.zip` archive, extract it to a folder of your choice, and launch `Yt-RivoGUI.exe`.\n\n"
+            f"Thank you for using Yt-RivoGUI and for your continued support and feedback."
         )
 
     # Wrap the full notes with nice badges and collapsible technical changelog
@@ -229,7 +261,7 @@ def generate_notes(version: str, api_key: str | None = None) -> str:
         f"[![Donate](https://img.shields.io/badge/Sponsor-InfinitePay-00E575?style=for-the-badge&logo=handshake&logoColor=black)](https://invoice.infinitepay.io/plans/brnale_music/bjLluwct3L)\n",
         ai_body,
         "\n---\n",
-        "<details><summary><b>🛠️ Technical Commit Log</b></summary>\n\n",
+        "<details><summary><b>Technical Commit Log</b></summary>\n\n",
         "```text\n",
         commit_log,
         "\n```\n</details>\n"
