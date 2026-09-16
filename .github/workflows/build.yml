@@ -182,11 +182,15 @@ jobs:
               f.write(f'matrix={json.dumps(matrix)}')
 
   gui:
-    name: gui
+    name: gui (${{ matrix.os }})
     needs: [process]
     permissions:
       contents: read
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     env:
       CHANNEL: ${{ inputs.channel }}
       ORIGIN: ${{ needs.process.outputs.origin }}
@@ -205,7 +209,8 @@ jobs:
       - name: Install Requirements
         run: |
           python -m pip install -U pip
-          python -m pip install -U PySide6 pyinstaller
+          python -m pip install -e ".[gui]"
+          python -m pip install -U pyinstaller pillow
 
       - name: Prepare
         run: |
@@ -213,16 +218,18 @@ jobs:
 
       - name: Build GUI app
         run: |
-          python -m PyInstaller --noconsole --name YtRivoGUI --distpath dist/gui --workpath build/gui app/__main__.py
-          python devscripts/generate_release_hashes.py dist/gui
+          python devscripts/build_gui.py
+
+      - name: Test GUI build
+        run: |
+          python devscripts/test_build.py
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
-          name: build-gui-${{ github.job }}
+          name: build-gui-${{ matrix.os }}
           path: |
             dist/gui/**
-            SHA256SUMS.txt
           compression-level: 0
 
   unix:

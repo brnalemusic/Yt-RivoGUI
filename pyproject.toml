@@ -3,26 +3,28 @@ requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "yt-dlp"
+name = "yt-rivogui"
 authors = [
-    {name = "pukkandan", email = "pukkandan.ytdlp@gmail.com"},
+    {name = "Breno Alexandrē", email = "brenoalexandre.music@gmail.com"},
 ]
 maintainers = [
-    {email = "maintainers@yt-dlp.org"},
-    {name = "Grub4K", email = "contact@grub4k.dev"},
-    {name = "bashonly", email = "bashonly@protonmail.com"},
-    {name = "coletdjnz", email = "coletdjnz@protonmail.com"},
+    {name = "Breno Alexandrē", email = "brenoalexandre.music@gmail.com"},
 ]
-description = "A feature-rich command-line audio/video downloader"
+description = "A feature-rich tool for downloading video and audio from any platform, featuring a graphical interface and powered by yt-dlp technology."
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = [
-    "cli",
-    "downloader",
-    "youtube-dl",
-    "youtube-downloader",
-    "sponsorblock",
+    "yt-rivogui",
+    "gui",
+    "desktop",
     "yt-dlp",
+    "youtube-downloader",
+    "media-downloader",
+    "video-downloader",
+    "audio-downloader",
+    "pyside6",
+    "qt",
+    "minimalist",
 ]
 license = "Unlicense"
 license-files = ["LICENSE"]
@@ -59,6 +61,8 @@ default = [
 ]
 gui = [
     "PySide6>=6.8.0",
+    "yt-dlp-ejs>=0.8.0",
+    "pillow>=10.0.0",
 ]
 curl-cffi = [
     "curl-cffi>=0.5.10,!=0.6.*,!=0.7.*,!=0.8.*,!=0.9.*,<0.17 ; implementation_name == 'cpython'",
@@ -138,10 +142,11 @@ uv = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/yt-dlp/yt-dlp#readme"
-Repository = "https://github.com/yt-dlp/yt-dlp"
-Tracker = "https://github.com/yt-dlp/yt-dlp/issues"
-Funding = "https://github.com/yt-dlp/yt-dlp/blob/master/Maintainers.md#maintainers"
+Homepage = "https://github.com/brnalemusic/Yt-RivoGUI"
+Documentation = "https://github.com/brnalemusic/Yt-RivoGUI#readme"
+Repository = "https://github.com/brnalemusic/Yt-RivoGUI"
+Tracker = "https://github.com/brnalemusic/Yt-RivoGUI/issues"
+Funding = "https://invoice.infinitepay.io/plans/brnale_music/bjLluwct3L"
 
 [project.scripts]
 yt-dlp = "yt_dlp:main"
@@ -153,6 +158,7 @@ hook-dirs = "yt_dlp.__pyinstaller:get_hook_dirs"
 [tool.hatch.build.targets.sdist]
 include = [
     "/yt_dlp",
+    "/app",
     "/devscripts",
     "/test",
     "/.gitignore",  # included by default, needed for auto-excludes

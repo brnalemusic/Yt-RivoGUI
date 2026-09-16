@@ -1,97 +1,54 @@
-# Maintainers
+# Maintainers & Project Credits
 
-This file lists the maintainers of yt-dlp and their major contributions. See the [Changelog](Changelog.md) for more details.
+## Lead Maintainer & Creator
 
-You can also find lists of all [contributors of yt-dlp](CONTRIBUTORS) and [authors of youtube-dl](https://github.com/ytdl-org/youtube-dl/blob/master/AUTHORS)
+### [Breno Alexandrē](https://github.com/brnalemusic)
+* **Role**: Creator & Lead Maintainer of **Yt-RivoGUI**
+* **Email**: `brenoalexandre.music@gmail.com`
+* **Repository**: [https://github.com/brnalemusic/Yt-RivoGUI](https://github.com/brnalemusic/Yt-RivoGUI)
+* **Contributions**:
+  * Designed and developed the minimalist obsidian-and-emerald PySide6 graphical user interface.
+  * Implemented 100% lowercase monospaced visual hierarchy, custom styling, and live terminal stream.
+  * Added intelligent bilingual system locale detection (`pt_BR` / `en_US`) with runtime switcher.
+  * Integrated automated YouTube JS challenge solving via `yt-dlp-ejs` and robust retry engine.
+  * Created automated PyInstaller standalone single-file builds, SHA256 checksum generation, and test suites.
 
-## Core Maintainers
+### Support & Sponsorship
+If you find Yt-RivoGUI helpful and want to support its ongoing development:
+* **Monthly Support (Brasil)**: [Apoiar no Brasil via InfinitePay (R$ 14,99/mês)](https://invoice.infinitepay.io/plans/brnale_music/bjLluwct3L)
+* **GitHub Sponsors**: [github.com/sponsors/brnalemusic](https://github.com/sponsors/brnalemusic)
 
-Core Maintainers are responsible for reviewing and merging contributions, publishing releases, and steering the overall direction of the project.
+---
 
-**You can contact the core maintainers via `maintainers@yt-dlp.org`.** This email address is **NOT** a support channel. [Open an issue](https://github.com/yt-dlp/yt-dlp/issues/new/choose) if you need help or want to report a bug.
+## Upstream Project & Credits
 
-### [coletdjnz](https://github.com/coletdjnz)
+Yt-RivoGUI is powered by the open-source technologies of **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**. We are immensely grateful to the `yt-dlp` maintainers, contributors, and the broader open-source community for their engineering excellence.
 
-[![gh-sponsor](https://img.shields.io/badge/_-Github-white.svg?logo=github&labelColor=555555&style=for-the-badge)](https://github.com/sponsors/coletdjnz)
+### Core Maintainers of yt-dlp
 
-* Overhauled the networking stack and implemented support for `requests` and `curl_cffi` (`--impersonate`) HTTP clients
-* Reworked the plugin architecture to support installing plugins across all yt-dlp distributions (exe, pip, etc.)
+#### [coletdjnz](https://github.com/coletdjnz)
+* Overhauled the networking stack and implemented support for `requests` and `curl_cffi` HTTP clients
+* Reworked the plugin architecture across yt-dlp distributions
 * Implemented support for external JavaScript runtimes/engines
-* Maintains support for YouTube
-* Added and fixed support for various other sites
+* Maintains support for YouTube and various sites
 
-### [bashonly](https://github.com/bashonly)
-
-* Rewrote and maintains the build/release workflows and the self-updater: executables, automated/nightly/master releases, `--update-to`
+#### [bashonly](https://github.com/bashonly)
+* Rewrote and maintains build/release workflows and self-updater
 * Overhauled external downloader cookie handling
-* Helped in implementing support for external JavaScript runtimes/engines
-* Added `--cookies-from-browser` support for Firefox containers
-* Maintains support for sites like YouTube, Vimeo, Twitter, TikTok, etc
-* Added support for various sites
+* Co-implemented support for external JavaScript runtimes/engines
+* Maintains support for YouTube, Vimeo, Twitter, TikTok, and other platforms
 
-
-### [Grub4K](https://github.com/Grub4K)
-
-[![gh-sponsor](https://img.shields.io/badge/_-Github-white.svg?logo=github&labelColor=555555&style=for-the-badge)](https://github.com/sponsors/Grub4K) [![ko-fi](https://img.shields.io/badge/_-Ko--fi-red.svg?logo=kofi&labelColor=555555&style=for-the-badge)](https://ko-fi.com/Grub4K)
-
-* `--update-to`, self-updater rewrite, automated/nightly/master releases
-* Reworked internals like `traverse_obj`, various core refactors and bugs fixes
+#### [Grub4K](https://github.com/Grub4K)
+* Self-updater rewrite, release automation, core refactors
 * Implemented proper progress reporting for parallel downloads
-* Implemented support for external JavaScript runtimes/engines
-* Improved/fixed/added Bundestag, crunchyroll, pr0gramm, Twitter, WrestleUniverse etc
+* Support for external JavaScript runtimes/engines
 
+### yt-dlp Founders & Inactive Maintainers
+* **[pukkandan](https://github.com/pukkandan)**: Founder of the yt-dlp fork, Lead Maintainer from 2021 to 2024.
+* **[shirt](https://github.com/shirt-dev)**: Multithreading (`-N`) and aria2c fragment downloads.
+* **[Ashish0804](https://github.com/Ashish0804)**: Broad site extractor support.
+* **[sepro](https://github.com/seproDev)**: UX improvements and engine maintenance.
 
-## Inactive Core Maintainers
+---
 
-### [pukkandan](https://github.com/pukkandan)
-
-[![ko-fi](https://img.shields.io/badge/_-Ko--fi-red.svg?logo=kofi&labelColor=555555&style=for-the-badge)](https://ko-fi.com/pukkandan)
-[![gh-sponsor](https://img.shields.io/badge/_-Github-white.svg?logo=github&labelColor=555555&style=for-the-badge)](https://github.com/sponsors/pukkandan)
-
-* Founder of the fork
-* Lead Maintainer from 2021-2024
-
-
-### [shirt](https://github.com/shirt-dev)
-
-[![ko-fi](https://img.shields.io/badge/_-Ko--fi-red.svg?logo=kofi&labelColor=555555&style=for-the-badge)](https://ko-fi.com/shirt)
-
-* Multithreading (`-N`) and aria2c support for fragment downloads
-* Support for media initialization and discontinuity in HLS
-* The self-updater (`-U`)
-
-
-### [Ashish0804](https://github.com/Ashish0804)
-
-[![ko-fi](https://img.shields.io/badge/_-Ko--fi-red.svg?logo=kofi&labelColor=555555&style=for-the-badge)](https://ko-fi.com/ashish0804)
-
-* Added support for new websites BiliIntl, DiscoveryPlusIndia, OlympicsReplay, PlanetMarathi, ShemarooMe, Utreon, Zee5 etc
-* Added playlist/series downloads for Hotstar, ParamountPlus, Rumble, SonyLIV, Trovo, TubiTv, Voot etc
-* Improved/fixed support for HiDive, HotStar, Hungama, LBRY, LinkedInLearning, Mxplayer, SonyLiv, TV2, Vimeo, VLive etc
-
-
-### [sepro](https://github.com/seproDev)
-
-* UX improvements: Warn when ffmpeg is missing, warn when double-clicking exe
-* Helped in implementing support for external JavaScript runtimes/engines
-* Code cleanup: Remove dead extractors, mark extractors as broken, enable/apply ruff rules
-* Improved/fixed/added ArdMediathek, DRTV, Floatplane, MagentaMusik, Naver, Nebula, OnDemandKorea, Vbox7 etc
-
-
-## Maintainers
-
-Maintainers are stewards of the project's codebase who can review and merge pull requests.
-
-- [doe1080](https://github.com/doe1080)
-
-
-## Triage Maintainers
-
-Triage Maintainers are frequent contributors who can manage issues and pull requests.
-
-- [gamer191](https://github.com/gamer191)
-- [garret1317](https://github.com/garret1317)
-- [pzhlkj6612](https://github.com/pzhlkj6612)
-- [DTrombett](https://github.com/dtrombett)
-- [grqz](https://github.com/grqz)
-- [InvalidUsernameException](https://github.com/InvalidUsernameException)
+For full historical details and full list of upstream contributors, see the original [yt-dlp repository](https://github.com/yt-dlp/yt-dlp).

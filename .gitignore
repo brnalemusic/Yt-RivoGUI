@@ -47,6 +47,8 @@ cookies
 *.ogg
 *.opus
 *.png
+!app/assets/*.png
+!Yt-RivoGUI-Logo.png
 *.sbv
 *.srt
 *.ssa
