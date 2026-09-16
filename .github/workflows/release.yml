@@ -320,8 +320,8 @@ jobs:
       - name: Push tag
         if: env.TARGET_REPO == github.repository
         run: |
-          git tag "${TARGET_TAG}" "${HEAD_SHA}"
-          git push origin "refs/tags/${TARGET_TAG}"
+          git tag -f "${TARGET_TAG}" "${HEAD_SHA}"
+          git push -f origin "refs/tags/${TARGET_TAG}"
           sleep 5  # Enough time to cover git-push vs gh-release-create race condition
 
       - name: Publish release
@@ -341,4 +341,4 @@ jobs:
           if ((PRERELEASE)); then
             gh_options+=(--prerelease)
           fi
-          gh release create "${gh_options[@]}" "${TARGET_TAG}" artifact/*
+          gh release create "${gh_options[@]}" "${TARGET_TAG}" artifact/* || gh release upload "${TARGET_TAG}" artifact/* --clobber
