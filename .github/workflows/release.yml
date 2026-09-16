@@ -29,6 +29,9 @@ on:
         required: false
       RELEASE_KEY:
         required: false
+      GEMINI_API_KEY:
+        required: false
+
   workflow_dispatch:
     inputs:
       source:
@@ -262,37 +265,15 @@ jobs:
       - name: Generate release notes
         env:
           REPOSITORY: ${{ github.repository }}
-          BASE_REPO: yt-dlp/yt-dlp
-          NIGHTLY_REPO: yt-dlp/yt-dlp-nightly-builds
-          MASTER_REPO: yt-dlp/yt-dlp-master-builds
-          DOCS_PATH: ${{ env.TARGET_REPO == github.repository && format('/tree/{0}', env.TARGET_TAG) || '' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          printf '%s' \
-            "[![Installation](https://img.shields.io/badge/-Which%20file%20to%20download%3F-white.svg?style=for-the-badge)]" \
-              "(https://github.com/${REPOSITORY}#installation \"Installation instructions\") " \
-            "[![Discord](https://img.shields.io/discord/807245652072857610?color=blue&labelColor=555555&label=&logo=discord&style=for-the-badge)]" \
-              "(https://discord.gg/H5MNcFW63r \"Discord\") " \
-            "[![Donate](https://img.shields.io/badge/_-Donate-red.svg?logo=githubsponsors&labelColor=555555&style=for-the-badge)]" \
-              "(https://github.com/${BASE_REPO}/blob/master/Maintainers.md#maintainers \"Donate\") " \
-            "[![Documentation](https://img.shields.io/badge/-Docs-brightgreen.svg?style=for-the-badge&logo=GitBook&labelColor=555555)]" \
-              "(https://github.com/${REPOSITORY}${DOCS_PATH}#readme \"Documentation\") " > ./RELEASE_NOTES
-          if [[ "${TARGET_REPO}" == "${BASE_REPO}" ]]; then
-            printf '%s' \
-              "[![Nightly](https://img.shields.io/badge/Nightly%20builds-purple.svg?style=for-the-badge)]" \
-                "(https://github.com/${NIGHTLY_REPO}/releases/latest \"Nightly builds\") " \
-              "[![Master](https://img.shields.io/badge/Master%20builds-lightblue.svg?style=for-the-badge)]" \
-                "(https://github.com/${MASTER_REPO}/releases/latest \"Master builds\")" >> ./RELEASE_NOTES
-          fi
-          printf '\n\n%s\n\n%s%s%s\n\n---\n' \
-            "#### A description of the various files is in the [README](https://github.com/${REPOSITORY}#release-files)" \
-            "The zipimport Unix executable and release tarball contain code licensed under ISC and MIT. " \
-            "The PyInstaller-bundled executables are subject to these and other licenses, all of which are compiled in " \
-            "[THIRD_PARTY_LICENSES.txt](https://github.com/${BASE_REPO}/blob/${HEAD_SHA}/THIRD_PARTY_LICENSES.txt)" >> ./RELEASE_NOTES
-          python ./devscripts/make_changelog.py -vv --collapsible >> ./RELEASE_NOTES
+          python ./devscripts/generate_ai_release_notes.py -v "${VERSION}" -o ./RELEASE_NOTES
           printf '%s\n\n' '**This is a pre-release build**' >> ./PRERELEASE_NOTES
           cat ./RELEASE_NOTES >> ./PRERELEASE_NOTES
           printf '%s\n\n' "Generated from: https://github.com/${REPOSITORY}/commit/${HEAD_SHA}" >> ./ARCHIVE_NOTES
           cat ./RELEASE_NOTES >> ./ARCHIVE_NOTES
+
 
       - name: Publish to archive repo
         env:
