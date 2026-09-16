@@ -181,6 +181,50 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'matrix={json.dumps(matrix)}')
 
+  gui:
+    name: gui
+    needs: [process]
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      CHANNEL: ${{ inputs.channel }}
+      ORIGIN: ${{ needs.process.outputs.origin }}
+      VERSION: ${{ needs.process.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install Requirements
+        run: |
+          python -m pip install -U pip
+          python -m pip install -U PySide6 pyinstaller
+
+      - name: Prepare
+        run: |
+          python devscripts/update-version.py -c "${CHANNEL}" -r "${ORIGIN}" "${VERSION}"
+
+      - name: Build GUI app
+        run: |
+          python -m PyInstaller --noconsole --name YtRivoGUI --distpath dist/gui --workpath build/gui app/__main__.py
+          python devscripts/generate_release_hashes.py dist/gui
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: build-gui-${{ github.job }}
+          path: |
+            dist/gui/**
+            SHA256SUMS.txt
+          compression-level: 0
+
   unix:
     name: unix
     needs: [process]

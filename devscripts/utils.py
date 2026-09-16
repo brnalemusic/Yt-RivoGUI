@@ -31,8 +31,13 @@ def read_version(fname='yt_dlp/version.py', varname='__version__'):
     return items[varname]
 
 
+def is_valid_version(version: str) -> bool:
+    return bool(re.fullmatch(r'\d+(?:\.\d+){0,3}', version))
+
+
 def calculate_version(version=None, fname='yt_dlp/version.py'):
-    if version and '.' in version:
+    if version:
+        assert is_valid_version(version), 'Version must be numeric and use 1-4 dot-separated segments'
         return version
 
     revision = version

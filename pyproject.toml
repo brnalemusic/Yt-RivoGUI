@@ -57,6 +57,9 @@ default = [
     "websockets>=13.0",
     "yt-dlp-ejs==0.8.0",
 ]
+gui = [
+    "PySide6>=6.8.0",
+]
 curl-cffi = [
     "curl-cffi>=0.5.10,!=0.6.*,!=0.7.*,!=0.8.*,!=0.9.*,<0.17 ; implementation_name == 'cpython'",
     "typing-extensions ; python_full_version < '3.11'",
@@ -142,6 +145,7 @@ Funding = "https://github.com/yt-dlp/yt-dlp/blob/master/Maintainers.md#maintaine
 
 [project.scripts]
 yt-dlp = "yt_dlp:main"
+yt-rivogui = "app.__main__:main"
 
 [project.entry-points.pyinstaller40]
 hook-dirs = "yt_dlp.__pyinstaller:get_hook_dirs"
@@ -167,7 +171,7 @@ artifacts = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["yt_dlp"]
+packages = ["yt_dlp", "app"]
 artifacts = [
     "/yt_dlp/extractor/lazy_extractors.py",
 ]
