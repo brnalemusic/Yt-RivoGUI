@@ -52,10 +52,13 @@
 
 ## installation & quickstart
 
-### option a: standalone executable (recommended for end users)
+### option a: standalone release (recommended for end users)
 
-1. download the latest `Yt-RivoGUI.exe` from [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
-2. run `Yt-RivoGUI.exe` directly. no python installation required.
+1. download either:
+   - `Yt-RivoGUI-v0.0.1.0-windows.zip` (recommended; avoids browser heuristic download warnings).
+   - `Yt-RivoGUI.exe` (direct standalone executable).
+   from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
+2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required.
 
 > **tip**: install [ffmpeg](https://ffmpeg.org/download.html) and add it to your system `PATH` for video remuxing and audio extraction.
 

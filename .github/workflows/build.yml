@@ -206,7 +206,7 @@ jobs:
         run: |
           python -m pip install -U pip
           python -m pip install -e ".[gui]"
-          python -m pip install -U pyinstaller pillow
+          python -m pip install -r "bundle/requirements/win-x64-pyinstaller.txt" pillow
 
       - name: Prepare
         run: |

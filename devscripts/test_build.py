@@ -67,6 +67,17 @@ def test_build(dist_dir: Path | None = None, auto_build: bool = False) -> int:
                 return 1
         else:
             print(f'[test_build] Notice: Executable not listed in {checksum_path}')
+
+        # Check zip archive if present
+        zip_files = list(dist_path.glob('*.zip'))
+        for zf in zip_files:
+            import zipfile
+            with zipfile.ZipFile(zf, 'r') as z:
+                if exe_name in z.namelist():
+                    print(f'[test_build] Zip archive verified: {zf.name} contains {exe_name}')
+                else:
+                    print(f'[test_build] ERROR: {zf.name} does not contain {exe_name}', file=sys.stderr)
+                    return 1
     else:
         print(f'[test_build] Notice: {checksum_path.name} not found')
 
