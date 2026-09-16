@@ -156,7 +156,6 @@
     - [Remove RTSP and MMS support](https://github.com/yt-dlp/yt-dlp/commit/bed3d58c5c1ff088584c5dac3c16eea4ff01c7b5) ([#17030](https://github.com/yt-dlp/yt-dlp/issues/17030)) by [seproDev](https://github.com/seproDev)
     - [Replace dead example/test URL](https://github.com/yt-dlp/yt-dlp/commit/c102b2096525218a6918a46b415fb167786f9656) ([#17061](https://github.com/yt-dlp/yt-dlp/issues/17061)) by [bashonly](https://github.com/bashonly)
     - Miscellaneous: [997fa14](https://github.com/yt-dlp/yt-dlp/commit/997fa140840a08df3938b40da470c78049fef1f6) by [bashonly](https://github.com/bashonly), [seproDev](https://github.com/seproDev)
-- **docs**: [Make "No AI / No LLM Policy" abundantly clear](https://github.com/yt-dlp/yt-dlp/commit/249aa5d6e667308fbf95ae5cfb40eba8177a802c) ([#16285](https://github.com/yt-dlp/yt-dlp/issues/16285)) by [bashonly](https://github.com/bashonly)
 
 ### 2026.06.09
 
