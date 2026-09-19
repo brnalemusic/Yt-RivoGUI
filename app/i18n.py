@@ -75,6 +75,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'notice_wav_thumbnail': 'o formato .wav não suporta capa embutida',
         'status_downloading_split': 'baixando vídeo e áudio...',
         'status_finished_split': 'download de vídeo e áudio concluído com sucesso!',
+        'section_source': 'fonte & destino',
+        'section_preview': 'mídia detectada',
+        'section_options': 'modo & configurações',
+        'notice_thumbnail_mode': 'modo capa: apenas a miniatura será salva no diretório selecionado.',
+        'progress_label': 'progresso',
+        'channel_prefix': 'canal:',
+        'duration_prefix': 'tempo:',
+        'playlist_prefix': 'playlist:',
+        'items_suffix': 'itens',
     },
     'en_US': {
         'app_title': 'yt-rivogui',
@@ -146,6 +155,15 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         'notice_wav_thumbnail': '.wav format does not support embedded cover art',
         'status_downloading_split': 'downloading video and audio...',
         'status_finished_split': 'video and audio downloaded successfully!',
+        'section_source': 'source & destination',
+        'section_preview': 'detected media',
+        'section_options': 'mode & settings',
+        'notice_thumbnail_mode': 'cover mode: only thumbnail image will be saved to the chosen folder.',
+        'progress_label': 'progress',
+        'channel_prefix': 'channel:',
+        'duration_prefix': 'duration:',
+        'playlist_prefix': 'playlist:',
+        'items_suffix': 'items',
     }
 }
 

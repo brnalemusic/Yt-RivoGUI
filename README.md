@@ -21,32 +21,37 @@
 
 ## overview
 
-`yt-rivogui` is a standalone desktop media downloader embodying a full graphical edition of `yt-dlp` with the engine built directly into the application (no external `yt-dlp` installation or command-line setup required). designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features an obsidian-and-emerald minimalist theme, monospaced typography, and lowercase interface styling, delivering full control over downloads while keeping the interface distraction-free, reliable, and lightweight.
+`yt-rivogui` is a standalone desktop media downloader embodying a full graphical edition of `yt-dlp` with the engine built directly into the application (no external `yt-dlp` installation or command-line setup required). designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features a retro-minimalist dark slate interface, monospaced typography, segmented card navigation, and complete lowercase interface styling, delivering full control over downloads while keeping the interface distraction-free, elegant, and lightweight.
 
 ---
 
 ## key features
 
-- **minimalist obsidian theme**: obsidian dark background (`#060809`) with lime and emerald green glowing accents (`#10B981`, `#22C55E`, `#43F4B2`).
-- **100% monospaced typography**: clean technical font stack (`cascadia code`, `jetbrains mono`, `consolas`).
+- **retro-minimalist dark design**: clean dark slate palette (`#0d1117`) with elevated card panels (`#161b22`), subtle borders (`#21262d`), and emerald green accents (`#238636`, `#34d399`).
+- **100% lowercase & monospaced typography**: uniform lowercase visual aesthetic across all buttons, labels, and badges, paired with clean technical monospace fonts (`cascadia code`, `jetbrains mono`, `consolas`).
+- **structured 3-zone card navigation**:
+  - **source & destination**: glowing url bar with one-click paste/clear buttons and folder destination picker.
+  - **detected media card**: centered preview with high-definition 16:9 thumbnail and metadata chips (channel, duration, playlist info).
+  - **mode & settings deck**: segmented radio pills to switch between `vídeo`, `áudio`, `vídeo + áudio (separados)`, and `capa` (thumbnail only).
+- **flexible media presets & codecs**:
+  - **video**: `best`, `4k (2160p)`, `1440p`, `1080p`, `720p`, `480p`, `360p` (`mp4`, `mkv`, `webm`).
+  - **audio**: `mp3`, `flac`, `m4a`, `wav`, `opus`, `aac`, `vorbis` with selectable quality bitrates (`best`, `320k`, `256k`, `192k`, `128k`).
+  - **split download**: simultaneously extract high-definition video and separate audio track.
 - **bilingual auto-detection**: automatically adapts to your system language:
   - brazilian portuguese (`pt_BR`) on portuguese environments.
   - american english (`en_US`) on all other system locales.
-  - real-time live language switcher directly in the interface.
+  - real-time live language switcher directly in the interface header.
 - **youtube js challenge solving**: built-in integration with `yt-dlp-ejs` to overcome recent youtube sabr/n-challenge restrictions and prevent connection timeouts (error -138).
-- **flexible quality presets**:
-  - `best` (highest available stream)
-  - `4k (2160p)`, `1440p`, `1080p`, `720p`, `480p`
-  - `audio only` (`mp3`, `flac`, `m4a`)
 - **automatic post-processing**:
-  - thumbnail embedding into video and audio files.
-  - metadata and tag embedding (title, artist, album, upload date).
+  - thumbnail embedding into media files.
+  - rich metadata and tag embedding (title, artist, album, upload date).
+  - subtitle embedding with target language selection.
   - format conversion and remuxing via ffmpeg.
 - **playlist intelligence**:
   - dedicated subfolder creation for playlists automatically named after playlist title.
-- **live terminal output**:
-  - real-time terminal display with sanitized ansi formatting.
-  - download speed, estimated time remaining, and animated progress bar.
+- **real-time telemetry & collapsible logs**:
+  - 4-column telemetry grid (progress %, speed, eta, file size).
+  - collapsible detailed terminal logs with sanitized ansi formatting.
 
 ---
 

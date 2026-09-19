@@ -113,27 +113,27 @@ MINIMAL_MONO_STYLESHEET = """
     font-size: 12px;
 }
 
-QMainWindow, QWidget#CentralWidget {
-    background-color: #060809;
+QMainWindow, QWidget#CentralWidget, QWidget#ScrollContent, QScrollArea, QScrollArea > QWidget > QWidget {
+    background-color: #0d1117;
 }
 
 QScrollArea {
-    background-color: transparent;
+    background-color: #0d1117;
     border: none;
 }
 QScrollBar:vertical {
-    background-color: #090D0B;
+    background-color: #0d1117;
     width: 6px;
     border-radius: 3px;
     margin: 0px;
 }
 QScrollBar::handle:vertical {
-    background-color: #16241D;
-    min-height: 20px;
+    background-color: #21262d;
+    min-height: 24px;
     border-radius: 3px;
 }
 QScrollBar::handle:vertical:hover {
-    background-color: #10B981;
+    background-color: #34d399;
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0px;
@@ -141,43 +141,61 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 
 /* CARDS */
 QFrame.Card {
-    background-color: #0B0F0D;
-    border: 1px solid #142019;
+    background-color: #161b22;
+    border: 1px solid #21262d;
     border-radius: 8px;
 }
 QFrame.Card:hover {
-    border-color: #1D3327;
+    border-color: #30363d;
+}
+
+/* NESTED / INNER BOXES */
+QFrame.InnerBox {
+    background-color: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
 }
 
 /* INPUTS */
 QLineEdit {
-    background-color: #080C0A;
-    color: #E2E8F0;
-    border: 1px solid #15221B;
+    background-color: #0d1117;
+    color: #f0f6fc;
+    border: 1px solid #21262d;
     border-radius: 6px;
-    padding: 8px 12px;
-    selection-background-color: #10B981;
-    selection-color: #060B08;
+    padding: 7px 12px;
+    selection-background-color: #238636;
+    selection-color: #ffffff;
 }
 QLineEdit:focus {
-    border: 1px solid #10B981;
-    background-color: #0B120E;
+    border: 1px solid #238636;
+    background-color: #0f141c;
+}
+QLineEdit#UrlInput {
+    background-color: #0d1117;
+    color: #f0f6fc;
+    border: 1px solid #238636;
+    border-radius: 8px;
+    padding: 8px 12px;
+}
+QLineEdit#UrlInput:focus {
+    border: 1px solid #34d399;
+    background-color: #0f141c;
 }
 
 /* COMBOBOX */
 QComboBox {
-    background-color: #080C0A;
-    color: #E2E8F0;
-    border: 1px solid #15221B;
+    background-color: #0d1117;
+    color: #f0f6fc;
+    border: 1px solid #21262d;
     border-radius: 6px;
-    padding: 6px 10px;
-    min-height: 18px;
+    padding: 5px 10px;
+    min-height: 20px;
 }
 QComboBox:hover {
-    border-color: #213A2C;
+    border-color: #30363d;
 }
 QComboBox:focus {
-    border-color: #10B981;
+    border-color: #238636;
 }
 QComboBox::drop-down {
     subcontrol-origin: padding;
@@ -186,183 +204,219 @@ QComboBox::drop-down {
     border-left-width: 0px;
 }
 QComboBox QAbstractItemView {
-    background-color: #0B0F0D;
-    color: #E2E8F0;
-    border: 1px solid #1D3327;
+    background-color: #161b22;
+    color: #f0f6fc;
+    border: 1px solid #30363d;
     border-radius: 6px;
     padding: 4px;
-    selection-background-color: #10B981;
-    selection-color: #060B08;
+    selection-background-color: #238636;
+    selection-color: #ffffff;
+}
+QComboBox#LangCombo {
+    background-color: #161b22;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
+    border-radius: 12px;
+    padding: 3px 12px;
+    font-size: 11px;
+}
+QComboBox#LangCombo:hover {
+    border-color: #34d399;
 }
 
 /* BUTTONS */
 QPushButton {
-    background-color: #101713;
-    color: #CBD5E1;
-    border: 1px solid #1B2B22;
+    background-color: #21262d;
+    color: #c9d1d9;
+    border: 1px solid #30363d;
     border-radius: 6px;
-    padding: 7px 14px;
+    padding: 6px 12px;
     font-weight: 500;
 }
 QPushButton:hover {
-    background-color: #16241D;
-    border-color: #264233;
-    color: #FFFFFF;
+    background-color: #30363d;
+    border-color: #484f58;
+    color: #ffffff;
 }
 QPushButton:pressed {
-    background-color: #0D1410;
+    background-color: #161b22;
 }
 QPushButton:disabled {
-    background-color: #080C0A;
-    color: #2C3E34;
-    border-color: #121C16;
+    background-color: #161b22;
+    color: #484f58;
+    border-color: #21262d;
 }
 
-/* PRIMARY BUTTON (GREEN ACCENT) */
+/* PRIMARY BUTTON (MINT / EMERALD ACCENT) */
 QPushButton#PrimaryButton {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #22C55E);
-    color: #050A07;
-    border: 1px solid #34D399;
+    background-color: #238636;
+    color: #040906;
+    border: 1px solid #34d399;
     border-radius: 6px;
-    padding: 10px 20px;
+    padding: 7px 22px;
     font-weight: 700;
 }
 QPushButton#PrimaryButton:hover {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #059669, stop:1 #16A34A);
-    border-color: #10B981;
-    color: #FFFFFF;
+    background-color: #2ea043;
+    border-color: #3fb950;
+    color: #ffffff;
 }
 QPushButton#PrimaryButton:pressed {
-    background: #047857;
-    color: #FFFFFF;
+    background-color: #19692c;
+    color: #ffffff;
 }
 QPushButton#PrimaryButton:disabled {
-    background: #0C1611;
-    border-color: #14241B;
-    color: #2B4737;
+    background-color: #13251a;
+    border-color: #1a3c26;
+    color: #234b32;
 }
 
 /* CANCEL BUTTON */
 QPushButton#CancelButton {
-    background-color: #1A0D10;
-    color: #F87171;
-    border: 1px solid #36171E;
+    background-color: #251216;
+    color: #f85149;
+    border: 1px solid #4a1d24;
     border-radius: 6px;
-    padding: 10px 16px;
+    padding: 7px 18px;
 }
 QPushButton#CancelButton:hover {
-    background-color: #261116;
-    border-color: #EF4444;
+    background-color: #2f171c;
+    border-color: #da3633;
+    color: #ffffff;
 }
 
-/* RADIO TABS (SEGMENTED) */
+/* SEGMENTED TAB RADIO BUTTONS */
 QRadioButton {
-    color: #64748B;
+    color: #8b949e;
     spacing: 6px;
-    padding: 4px 8px;
-    border-radius: 4px;
+    padding: 6px 14px;
+    background-color: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    font-weight: 500;
 }
 QRadioButton:hover {
-    color: #CBD5E1;
+    color: #f0f6fc;
+    border-color: #30363d;
+    background-color: #161b22;
 }
 QRadioButton:checked {
-    color: #34D399;
+    color: #34d399;
+    background-color: #0e2a1d;
+    border: 1px solid #238636;
     font-weight: 600;
-    background-color: #0B1C13;
 }
 QRadioButton::indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 6px;
-    border: 1px solid #1C3325;
-    background-color: #080C0A;
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    border: 1px solid #30363d;
+    background-color: #0d1117;
 }
 QRadioButton::indicator:checked {
-    border-color: #10B981;
-    background-color: #10B981;
+    border-color: #34d399;
+    background-color: #34d399;
 }
 
 /* CHECKBOX */
 QCheckBox {
-    color: #94A3B8;
+    color: #c9d1d9;
     spacing: 8px;
 }
 QCheckBox:hover {
-    color: #F1F5F9;
+    color: #f0f6fc;
 }
 QCheckBox::indicator {
     width: 14px;
     height: 14px;
     border-radius: 3px;
-    border: 1px solid #1A2D22;
-    background-color: #080C0A;
+    border: 1px solid #30363d;
+    background-color: #0d1117;
 }
 QCheckBox::indicator:hover {
-    border-color: #10B981;
+    border-color: #34d399;
 }
 QCheckBox::indicator:checked {
-    border-color: #10B981;
-    background-color: #10B981;
+    border-color: #34d399;
+    background-color: #238636;
 }
 
 /* PROGRESS BAR */
 QProgressBar {
-    background-color: #080C0A;
-    border: 1px solid #15221B;
-    border-radius: 4px;
-    height: 8px;
+    background-color: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 3px;
+    height: 6px;
     text-align: center;
     color: transparent;
 }
 QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10B981, stop:1 #43F4B2);
-    border-radius: 3px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #238636, stop:1 #34d399);
+    border-radius: 2px;
+}
+
+/* METRICS */
+QFrame.MetricBox {
+    background-color: transparent;
+    border: none;
+    border-right: 1px solid #21262d;
+    padding-right: 12px;
+}
+QFrame.MetricBoxLast {
+    background-color: transparent;
+    border: none;
 }
 
 /* LOG VIEW */
 QTextEdit#LogView {
-    background-color: #040605;
-    color: #34D399;
-    border: 1px solid #102619;
+    background-color: #07090c;
+    color: #34d399;
+    border: 1px solid #21262d;
     border-radius: 6px;
-    padding: 8px;
+    padding: 10px;
     font-size: 11px;
-    line-height: 1.4;
+    line-height: 1.45;
 }
 
-/* LABELS */
+/* LABELS & TYPOGRAPHY */
 QLabel {
-    color: #CBD5E1;
+    color: #c9d1d9;
 }
 QLabel#AppTitle {
-    color: #FFFFFF;
+    color: #ffffff;
     font-size: 16px;
     font-weight: 700;
     letter-spacing: -0.5px;
 }
 QLabel#AppSubtitle {
-    color: #10B981;
+    color: #34d399;
     font-size: 11px;
 }
 QLabel#SecondaryText {
-    color: #64748B;
+    color: #8b949e;
     font-size: 11px;
 }
+QLabel#SectionHeader {
+    color: #34d399;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
 QLabel#MetricValue {
-    color: #E2E8F0;
-    font-size: 12px;
+    color: #f0f6fc;
+    font-size: 13px;
     font-weight: 600;
 }
 QLabel#MetricLabel {
-    color: #475569;
+    color: #8b949e;
     font-size: 10px;
 }
 QLabel#VersionBadge {
-    background-color: #0A1C12;
-    color: #34D399;
-    border: 1px solid #10B981;
+    background-color: #0e2a1d;
+    color: #34d399;
+    border: 1px solid #238636;
     border-radius: 4px;
-    padding: 1px 6px;
+    padding: 2px 7px;
     font-size: 10px;
     font-weight: 600;
 }
@@ -377,8 +431,8 @@ class MainWindow(QMainWindow):
 
         # Window configuration
         self.setWindowTitle(self.i18n('app_title'))
-        self.resize(960, 720)
-        self.setMinimumSize(820, 600)
+        self.resize(980, 750)
+        self.setMinimumSize(850, 620)
 
         # Set taskbar and window icon
         if self.logo_path and self.logo_path.exists():
@@ -406,14 +460,20 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
         root_layout = QVBoxLayout(central_widget)
-        root_layout.setContentsMargins(18, 16, 18, 16)
+        root_layout.setContentsMargins(18, 14, 18, 14)
         root_layout.setSpacing(10)
 
         # 1. HEADER BAR
         header_card = QFrame()
         header_layout = QHBoxLayout(header_card)
         header_layout.setContentsMargins(0, 0, 0, 4)
-        header_layout.setSpacing(10)
+        header_layout.setSpacing(12)
+
+        header_layout.addStretch(1)
+
+        # Center Brand Stack
+        brand_box = QHBoxLayout()
+        brand_box.setSpacing(10)
 
         # Logo image
         self.logo_label = QLabel()
@@ -424,15 +484,15 @@ class MainWindow(QMainWindow):
             self.logo_label.setPixmap(pix)
         else:
             self.logo_label.setText('▶')
-            self.logo_label.setStyleSheet('font-size: 20px; color: #10B981;')
-        header_layout.addWidget(self.logo_label)
+            self.logo_label.setStyleSheet('font-size: 20px; color: #34d399;')
+        brand_box.addWidget(self.logo_label)
 
         # App Title and Subtitle
         title_box = QVBoxLayout()
         title_box.setSpacing(1)
         title_row = QHBoxLayout()
-        title_row.setSpacing(6)
-        self.app_title_label = QLabel(self.i18n('app_title'))
+        title_row.setSpacing(8)
+        self.app_title_label = QLabel(self.i18n('app_title').lower())
         self.app_title_label.setObjectName('AppTitle')
         title_row.addWidget(self.app_title_label)
 
@@ -442,23 +502,24 @@ class MainWindow(QMainWindow):
         title_row.addStretch()
         title_box.addLayout(title_row)
 
-        self.app_subtitle_label = QLabel(self.i18n('app_subtitle'))
+        self.app_subtitle_label = QLabel(self.i18n('app_subtitle').lower())
         self.app_subtitle_label.setObjectName('AppSubtitle')
         title_box.addWidget(self.app_subtitle_label)
-        header_layout.addLayout(title_box)
+        brand_box.addLayout(title_box)
 
-        header_layout.addStretch()
+        header_layout.addLayout(brand_box)
+        header_layout.addStretch(1)
 
-        # Language selector in header
+        # Language selector in top right
         lang_box = QHBoxLayout()
         lang_box.setSpacing(6)
-        self.lang_label = QLabel(self.i18n('language_label'))
-        self.lang_label.setObjectName('SecondaryText')
-        lang_box.addWidget(self.lang_label)
+        self.lang_label = QLabel('')
+        self.lang_label.setVisible(False)
 
         self.lang_combo = QComboBox()
-        self.lang_combo.addItem('pt-br', 'pt_BR')
-        self.lang_combo.addItem('en-us', 'en_US')
+        self.lang_combo.setObjectName('LangCombo')
+        self.lang_combo.addItem('🌐 pt-br', 'pt_BR')
+        self.lang_combo.addItem('🌐 en-us', 'en_US')
         idx = 0 if self.i18n.current_lang == 'pt_BR' else 1
         self.lang_combo.setCurrentIndex(idx)
         self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
@@ -470,41 +531,48 @@ class MainWindow(QMainWindow):
         # SCROLL AREA FOR BODY
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_content = QWidget()
+        scroll_content.setObjectName('ScrollContent')
         body_layout = QVBoxLayout(scroll_content)
-        body_layout.setContentsMargins(0, 2, 6, 2)
+        body_layout.setContentsMargins(0, 0, 4, 0)
         body_layout.setSpacing(10)
 
-        # 2. URL & DESTINATION CARD
+        # 2. SOURCE & DESTINATION CARD
         url_card = QFrame()
         url_card.setProperty('class', 'Card')
         url_layout = QVBoxLayout(url_card)
-        url_layout.setContentsMargins(12, 12, 12, 12)
+        url_layout.setContentsMargins(14, 12, 14, 12)
         url_layout.setSpacing(8)
+
+        self.section_source_label = QLabel(self.i18n('section_source').lower())
+        self.section_source_label.setObjectName('SectionHeader')
+        url_layout.addWidget(self.section_source_label)
 
         # URL row
         url_input_row = QHBoxLayout()
-        url_input_row.setSpacing(6)
+        url_input_row.setSpacing(8)
 
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText(self.i18n('url_placeholder'))
+        self.url_input.setObjectName('UrlInput')
+        self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
         self.url_input.textChanged.connect(self._on_url_text_changed)
         url_input_row.addWidget(self.url_input)
 
-        self.btn_paste = QPushButton(self.i18n('paste_button'))
+        self.btn_paste = QPushButton(self.i18n('paste_button').lower())
         self.btn_paste.clicked.connect(self._paste_clipboard)
         url_input_row.addWidget(self.btn_paste)
 
-        self.btn_clear = QPushButton(self.i18n('clear_button'))
+        self.btn_clear = QPushButton(self.i18n('clear_button').lower())
         self.btn_clear.clicked.connect(self._clear_url)
         url_input_row.addWidget(self.btn_clear)
         url_layout.addLayout(url_input_row)
 
         # Destination Folder row
         dest_row = QHBoxLayout()
-        dest_row.setSpacing(6)
+        dest_row.setSpacing(8)
 
-        self.dest_label = QLabel(self.i18n('destination_folder'))
+        self.dest_label = QLabel(self.i18n('destination_folder').lower())
         self.dest_label.setObjectName('SecondaryText')
         dest_row.addWidget(self.dest_label)
 
@@ -512,42 +580,49 @@ class MainWindow(QMainWindow):
         self.dest_path_input.setReadOnly(True)
         dest_row.addWidget(self.dest_path_input)
 
-        self.btn_browse = QPushButton(self.i18n('browse_folder'))
+        self.btn_browse = QPushButton(f"🔍 {self.i18n('browse_folder').lower()}")
         self.btn_browse.clicked.connect(self._choose_output_dir)
         dest_row.addWidget(self.btn_browse)
 
-        self.btn_open_folder = QPushButton(self.i18n('open_folder'))
+        self.btn_open_folder = QPushButton(f"📁 {self.i18n('open_folder').lower()}")
         self.btn_open_folder.clicked.connect(self._open_output_dir)
         dest_row.addWidget(self.btn_open_folder)
 
         url_layout.addLayout(dest_row)
         body_layout.addWidget(url_card)
 
-        # 3. PREVIEW CARD
+        # 3. MEDIA PREVIEW CARD
         self.preview_card = QFrame()
         self.preview_card.setProperty('class', 'Card')
-        preview_layout = QHBoxLayout(self.preview_card)
-        preview_layout.setContentsMargins(12, 10, 12, 10)
-        preview_layout.setSpacing(12)
+        preview_layout = QVBoxLayout(self.preview_card)
+        preview_layout.setContentsMargins(14, 12, 14, 12)
+        preview_layout.setSpacing(8)
+
+        self.section_preview_label = QLabel(self.i18n('section_preview').lower())
+        self.section_preview_label.setObjectName('SectionHeader')
+        preview_layout.addWidget(self.section_preview_label)
+
+        preview_center_box = QVBoxLayout()
+        preview_center_box.setSpacing(8)
+
+        self.preview_title = QLabel(self.i18n('preview_empty').lower())
+        self.preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_title.setWordWrap(True)
+        self.preview_title.setStyleSheet('font-size: 13px; font-weight: 600; color: #f0f6fc; line-height: 1.3;')
+        preview_center_box.addWidget(self.preview_title)
 
         # Thumbnail Label
         self.thumb_label = QLabel()
-        self.thumb_label.setFixedSize(140, 78)
+        self.thumb_label.setFixedSize(160, 90)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumb_label.setStyleSheet('background-color: #08090E; border: 1px solid #1A1D29; border-radius: 6px;')
+        self.thumb_label.setStyleSheet('background-color: #0d1117; border: 1px solid #21262d; border-radius: 6px; color: #484f58; font-size: 11px;')
         self.thumb_label.setText('preview')
-        preview_layout.addWidget(self.thumb_label)
+        preview_center_box.addWidget(self.thumb_label, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # Video Meta details
-        meta_layout = QVBoxLayout()
-        meta_layout.setSpacing(3)
-        self.preview_title = QLabel(self.i18n('preview_empty'))
-        self.preview_title.setWordWrap(True)
-        self.preview_title.setStyleSheet('font-size: 12px; font-weight: 600; color: #F1F5F9;')
-        meta_layout.addWidget(self.preview_title)
-
+        # Metadata Details Row
         meta_info_row = QHBoxLayout()
-        meta_info_row.setSpacing(12)
+        meta_info_row.setSpacing(14)
+        meta_info_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.preview_channel = QLabel('')
         self.preview_channel.setObjectName('SecondaryText')
@@ -558,40 +633,43 @@ class MainWindow(QMainWindow):
         meta_info_row.addWidget(self.preview_duration)
 
         self.preview_playlist_badge = QLabel('')
-        self.preview_playlist_badge.setStyleSheet('color: #34D399; font-weight: 500;')
+        self.preview_playlist_badge.setStyleSheet('color: #34d399; font-weight: 600;')
         meta_info_row.addWidget(self.preview_playlist_badge)
 
-        meta_info_row.addStretch()
-        meta_layout.addLayout(meta_info_row)
-        preview_layout.addLayout(meta_layout)
+        preview_center_box.addLayout(meta_info_row)
+        preview_layout.addLayout(preview_center_box)
         body_layout.addWidget(self.preview_card)
 
         # 4. DOWNLOAD OPTIONS CARD
         options_card = QFrame()
         options_card.setProperty('class', 'Card')
         options_layout = QVBoxLayout(options_card)
-        options_layout.setContentsMargins(12, 12, 12, 12)
+        options_layout.setContentsMargins(14, 12, 14, 12)
         options_layout.setSpacing(10)
 
-        # Mode Selection Row (Segmented Radio)
+        self.section_options_label = QLabel(self.i18n('section_options').lower())
+        self.section_options_label.setObjectName('SectionHeader')
+        options_layout.addWidget(self.section_options_label)
+
+        # Mode Selection Row (Segmented Radio Tabs)
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
         self.mode_group = QButtonGroup(self)
 
-        self.radio_video = QRadioButton(self.i18n('mode_video'))
+        self.radio_video = QRadioButton(self.i18n('mode_video').lower())
         self.radio_video.setChecked(True)
         self.mode_group.addButton(self.radio_video, 0)
         mode_row.addWidget(self.radio_video)
 
-        self.radio_audio = QRadioButton(self.i18n('mode_audio'))
+        self.radio_audio = QRadioButton(self.i18n('mode_audio').lower())
         self.mode_group.addButton(self.radio_audio, 1)
         mode_row.addWidget(self.radio_audio)
 
-        self.radio_split = QRadioButton(self.i18n('mode_split'))
+        self.radio_split = QRadioButton(self.i18n('mode_split').lower())
         self.mode_group.addButton(self.radio_split, 2)
         mode_row.addWidget(self.radio_split)
 
-        self.radio_thumbnail = QRadioButton(self.i18n('mode_thumbnail'))
+        self.radio_thumbnail = QRadioButton(self.i18n('mode_thumbnail').lower())
         self.mode_group.addButton(self.radio_thumbnail, 3)
         mode_row.addWidget(self.radio_thumbnail)
 
@@ -599,29 +677,39 @@ class MainWindow(QMainWindow):
         options_layout.addLayout(mode_row)
         self.mode_group.idToggled.connect(self._on_mode_changed)
 
+        # Settings Container
+        settings_container = QFrame()
+        settings_container.setProperty('class', 'InnerBox')
+        settings_inner_layout = QVBoxLayout(settings_container)
+        settings_inner_layout.setContentsMargins(12, 10, 12, 10)
+        settings_inner_layout.setSpacing(8)
+
         # Grid of Format & Quality options
         self.settings_grid = QGridLayout()
-        self.settings_grid.setHorizontalSpacing(12)
+        self.settings_grid.setHorizontalSpacing(14)
         self.settings_grid.setVerticalSpacing(8)
 
         # Video Quality & Format Controls
-        self.quality_label = QLabel(self.i18n('quality_label'))
+        self.quality_label = QLabel(self.i18n('quality_label').lower())
+        self.quality_label.setObjectName('SecondaryText')
         self.quality_combo = QComboBox()
-        self.quality_combo.addItem(self.i18n('quality_best'), 'best')
-        self.quality_combo.addItem(self.i18n('quality_2160p'), '2160p')
-        self.quality_combo.addItem(self.i18n('quality_1440p'), '1440p')
-        self.quality_combo.addItem(self.i18n('quality_1080p'), '1080p')
-        self.quality_combo.addItem(self.i18n('quality_720p'), '720p')
-        self.quality_combo.addItem(self.i18n('quality_480p'), '480p')
-        self.quality_combo.addItem(self.i18n('quality_360p'), '360p')
+        self.quality_combo.addItem(self.i18n('quality_best').lower(), 'best')
+        self.quality_combo.addItem(self.i18n('quality_2160p').lower(), '2160p')
+        self.quality_combo.addItem(self.i18n('quality_1440p').lower(), '1440p')
+        self.quality_combo.addItem(self.i18n('quality_1080p').lower(), '1080p')
+        self.quality_combo.addItem(self.i18n('quality_720p').lower(), '720p')
+        self.quality_combo.addItem(self.i18n('quality_480p').lower(), '480p')
+        self.quality_combo.addItem(self.i18n('quality_360p').lower(), '360p')
 
-        self.format_label = QLabel(self.i18n('format_label'))
+        self.format_label = QLabel(self.i18n('format_label').lower())
+        self.format_label.setObjectName('SecondaryText')
         self.format_combo = QComboBox()
         self.format_combo.addItem('mp4', 'mp4')
         self.format_combo.addItem('mkv', 'mkv')
 
         # Audio Format & Quality Controls
-        self.audio_format_label = QLabel(self.i18n('audio_format_label'))
+        self.audio_format_label = QLabel(self.i18n('audio_format_label').lower())
+        self.audio_format_label.setObjectName('SecondaryText')
         self.audio_format_combo = QComboBox()
         self.audio_format_combo.addItem('mp3', 'mp3')
         self.audio_format_combo.addItem('m4a', 'm4a')
@@ -630,13 +718,14 @@ class MainWindow(QMainWindow):
         self.audio_format_combo.addItem('opus', 'opus')
         self.audio_format_combo.currentIndexChanged.connect(self._on_audio_format_changed)
 
-        self.audio_quality_label = QLabel(self.i18n('audio_quality_label'))
+        self.audio_quality_label = QLabel(self.i18n('audio_quality_label').lower())
+        self.audio_quality_label.setObjectName('SecondaryText')
         self.audio_quality_combo = QComboBox()
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_best'), 'best')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_320'), '320')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_256'), '256')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_192'), '192')
-        self.audio_quality_combo.addItem(self.i18n('audio_quality_128'), '128')
+        self.audio_quality_combo.addItem(self.i18n('audio_quality_best').lower(), 'best')
+        self.audio_quality_combo.addItem(self.i18n('audio_quality_320').lower(), '320')
+        self.audio_quality_combo.addItem(self.i18n('audio_quality_256').lower(), '256')
+        self.audio_quality_combo.addItem(self.i18n('audio_quality_192').lower(), '192')
+        self.audio_quality_combo.addItem(self.i18n('audio_quality_128').lower(), '128')
 
         # Add to Grid
         self.settings_grid.addWidget(self.quality_label, 0, 0)
@@ -649,59 +738,67 @@ class MainWindow(QMainWindow):
         self.settings_grid.addWidget(self.audio_quality_label, 1, 2)
         self.settings_grid.addWidget(self.audio_quality_combo, 1, 3)
 
-        options_layout.addLayout(self.settings_grid)
+        settings_inner_layout.addLayout(self.settings_grid)
 
-        # Checkbox Row 1: Embeds & Options
-        check_row_1 = QHBoxLayout()
-        check_row_1.setSpacing(16)
-        self.chk_embed_thumb = QCheckBox(self.i18n('opt_embed_thumbnail'))
+        # Notice for thumbnail mode
+        self.thumb_mode_notice = QLabel(self.i18n('notice_thumbnail_mode').lower())
+        self.thumb_mode_notice.setObjectName('SecondaryText')
+        self.thumb_mode_notice.setVisible(False)
+        settings_inner_layout.addWidget(self.thumb_mode_notice)
+
+        options_layout.addWidget(settings_container)
+
+        # Checkbox Matrix: Embeds, Subtitles & Options
+        checks_grid = QGridLayout()
+        checks_grid.setHorizontalSpacing(18)
+        checks_grid.setVerticalSpacing(8)
+
+        self.chk_embed_thumb = QCheckBox(self.i18n('opt_embed_thumbnail').lower())
         self.chk_embed_thumb.setChecked(True)
-        check_row_1.addWidget(self.chk_embed_thumb)
+        checks_grid.addWidget(self.chk_embed_thumb, 0, 0)
 
-        self.chk_embed_meta = QCheckBox(self.i18n('opt_embed_metadata'))
+        self.chk_embed_meta = QCheckBox(self.i18n('opt_embed_metadata').lower())
         self.chk_embed_meta.setChecked(True)
-        check_row_1.addWidget(self.chk_embed_meta)
+        checks_grid.addWidget(self.chk_embed_meta, 0, 1)
 
-        self.chk_video_muted = QCheckBox(self.i18n('opt_video_muted'))
-        self.chk_video_muted.setChecked(False)
-        self.chk_video_muted.setVisible(False)
-        check_row_1.addWidget(self.chk_video_muted)
-
-        check_row_1.addStretch()
-        options_layout.addLayout(check_row_1)
-
-        # Checkbox Row 2: Subtitles
-        check_row_2 = QHBoxLayout()
-        check_row_2.setSpacing(10)
-        self.chk_subtitles = QCheckBox(self.i18n('opt_subtitles'))
+        sub_box = QHBoxLayout()
+        sub_box.setSpacing(8)
+        self.chk_subtitles = QCheckBox(self.i18n('opt_subtitles').lower())
         self.chk_subtitles.setChecked(False)
         self.chk_subtitles.toggled.connect(self._on_subtitles_toggled)
-        check_row_2.addWidget(self.chk_subtitles)
+        sub_box.addWidget(self.chk_subtitles)
 
-        self.sub_lang_label = QLabel(self.i18n('sub_lang_label'))
+        self.sub_lang_label = QLabel(self.i18n('sub_lang_label').lower())
         self.sub_lang_label.setObjectName('SecondaryText')
-        check_row_2.addWidget(self.sub_lang_label)
+        sub_box.addWidget(self.sub_lang_label)
 
         self.sub_lang_combo = QComboBox()
-        self.sub_lang_combo.addItem(self.i18n('sub_lang_pt'), 'pt')
-        self.sub_lang_combo.addItem(self.i18n('sub_lang_en'), 'en')
-        self.sub_lang_combo.addItem(self.i18n('sub_lang_all'), 'all')
+        self.sub_lang_combo.addItem(self.i18n('sub_lang_pt').lower(), 'pt')
+        self.sub_lang_combo.addItem(self.i18n('sub_lang_en').lower(), 'en')
+        self.sub_lang_combo.addItem(self.i18n('sub_lang_all').lower(), 'all')
         self.sub_lang_combo.setEnabled(False)
-        check_row_2.addWidget(self.sub_lang_combo)
-        check_row_2.addStretch()
-        options_layout.addLayout(check_row_2)
+        sub_box.addWidget(self.sub_lang_combo)
+        sub_box.addStretch()
+        checks_grid.addLayout(sub_box, 1, 0)
 
-        # Checkbox Row 3: Playlist Option
-        check_row_3 = QVBoxLayout()
-        check_row_3.setSpacing(2)
-        self.chk_playlist = QCheckBox(self.i18n('opt_playlist'))
+        self.chk_video_muted = QCheckBox(self.i18n('opt_video_muted').lower())
+        self.chk_video_muted.setChecked(False)
+        self.chk_video_muted.setVisible(False)
+        checks_grid.addWidget(self.chk_video_muted, 1, 1)
+
+        options_layout.addLayout(checks_grid)
+
+        # Checkbox Row 2: Playlist Option
+        check_row_2 = QVBoxLayout()
+        check_row_2.setSpacing(2)
+        self.chk_playlist = QCheckBox(self.i18n('opt_playlist').lower())
         self.chk_playlist.setChecked(False)
-        check_row_3.addWidget(self.chk_playlist)
+        check_row_2.addWidget(self.chk_playlist)
 
-        self.playlist_tip = QLabel(self.i18n('playlist_notice'))
-        self.playlist_tip.setStyleSheet('color: #64748B; font-size: 10px; margin-left: 22px;')
-        check_row_3.addWidget(self.playlist_tip)
-        options_layout.addLayout(check_row_3)
+        self.playlist_tip = QLabel(self.i18n('playlist_notice').lower())
+        self.playlist_tip.setStyleSheet('color: #8b949e; font-size: 10px; margin-left: 22px;')
+        check_row_2.addWidget(self.playlist_tip)
+        options_layout.addLayout(check_row_2)
 
         body_layout.addWidget(options_card)
 
@@ -709,7 +806,7 @@ class MainWindow(QMainWindow):
         progress_card = QFrame()
         progress_card.setProperty('class', 'Card')
         progress_layout = QVBoxLayout(progress_card)
-        progress_layout.setContentsMargins(12, 12, 12, 12)
+        progress_layout.setContentsMargins(14, 12, 14, 12)
         progress_layout.setSpacing(10)
 
         # Status Label and Action Buttons
@@ -717,26 +814,26 @@ class MainWindow(QMainWindow):
         action_row.setSpacing(10)
 
         self.status_dot = QLabel('●')
-        self.status_dot.setStyleSheet('color: #10B981; font-size: 13px;')
+        self.status_dot.setStyleSheet('color: #34d399; font-size: 13px;')
         action_row.addWidget(self.status_dot)
 
-        self.status_label = QLabel(self.i18n('status_ready'))
-        self.status_label.setStyleSheet('font-size: 12px; font-weight: 500; color: #E2E8F0;')
+        self.status_label = QLabel(self.i18n('status_ready').lower())
+        self.status_label.setStyleSheet('font-size: 12px; font-weight: 600; color: #f0f6fc;')
         action_row.addWidget(self.status_label)
         action_row.addStretch()
 
-        self.btn_open_file = QPushButton(self.i18n('open_file'))
+        self.btn_open_file = QPushButton(self.i18n('open_file').lower())
         self.btn_open_file.setVisible(False)
         self.btn_open_file.clicked.connect(self._open_downloaded_file)
         action_row.addWidget(self.btn_open_file)
 
-        self.btn_cancel = QPushButton(self.i18n('btn_cancel'))
+        self.btn_cancel = QPushButton(self.i18n('btn_cancel').lower())
         self.btn_cancel.setObjectName('CancelButton')
         self.btn_cancel.setEnabled(False)
         self.btn_cancel.clicked.connect(self._cancel_download)
         action_row.addWidget(self.btn_cancel)
 
-        self.btn_download = QPushButton(self.i18n('btn_download'))
+        self.btn_download = QPushButton(self.i18n('btn_download').lower())
         self.btn_download.setObjectName('PrimaryButton')
         self.btn_download.clicked.connect(self._start_download)
         action_row.addWidget(self.btn_download)
@@ -751,31 +848,31 @@ class MainWindow(QMainWindow):
 
         # Metrics Row
         metrics_row = QHBoxLayout()
-        metrics_row.setSpacing(8)
+        metrics_row.setSpacing(12)
 
         # Percentage
-        self.pct_box = self._create_metric_widget(self.i18n('status_downloading'), '0%')
-        metrics_row.addWidget(self.pct_box)
+        self.pct_box = self._create_metric_widget(self.i18n('progress_label'), '0%')
+        metrics_row.addWidget(self.pct_box, 1)
 
         # Speed
         self.speed_box = self._create_metric_widget(self.i18n('speed_label'), '--')
-        metrics_row.addWidget(self.speed_box)
+        metrics_row.addWidget(self.speed_box, 1)
 
         # ETA
         self.eta_box = self._create_metric_widget(self.i18n('eta_label'), '--:--')
-        metrics_row.addWidget(self.eta_box)
+        metrics_row.addWidget(self.eta_box, 1)
 
         # Size
-        self.size_box = self._create_metric_widget(self.i18n('size_label'), '0 mb / 0 mb')
-        metrics_row.addWidget(self.size_box)
+        self.size_box = self._create_metric_widget(self.i18n('size_label'), '0 mb / 0 mb', is_last=True)
+        metrics_row.addWidget(self.size_box, 1)
 
         progress_layout.addLayout(metrics_row)
         body_layout.addWidget(progress_card)
 
         # 6. LOGS (COLLAPSIBLE)
         log_header_layout = QHBoxLayout()
-        self.btn_toggle_logs = QPushButton(self.i18n('toggle_logs_show'))
-        self.btn_toggle_logs.setStyleSheet('border: none; background: transparent; color: #10B981; text-align: left; font-size: 11px;')
+        self.btn_toggle_logs = QPushButton(self.i18n('toggle_logs_show').lower())
+        self.btn_toggle_logs.setStyleSheet('border: none; background: transparent; color: #34d399; text-align: left; font-size: 11px;')
         self.btn_toggle_logs.clicked.connect(self._toggle_logs)
         log_header_layout.addWidget(self.btn_toggle_logs)
         log_header_layout.addStretch()
@@ -793,12 +890,12 @@ class MainWindow(QMainWindow):
 
         self._update_controls_visibility()
 
-    def _create_metric_widget(self, label_text: str, default_val: str) -> QFrame:
+    def _create_metric_widget(self, label_text: str, default_val: str, is_last: bool = False) -> QFrame:
         frame = QFrame()
-        frame.setStyleSheet('background-color: #08090E; border: 1px solid #141722; border-radius: 4px; padding: 2px 6px;')
+        frame.setProperty('class', 'MetricBoxLast' if is_last else 'MetricBox')
         layout = QVBoxLayout(frame)
-        layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(1)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setSpacing(2)
 
         lbl = QLabel(label_text.lower())
         lbl.setObjectName('MetricLabel')
@@ -818,19 +915,25 @@ class MainWindow(QMainWindow):
         self.app_title_label.setText(self.i18n('app_title').lower())
         self.app_subtitle_label.setText(self.i18n('app_subtitle').lower())
         self.version_badge.setText(f'v{__version__}')
-        self.lang_label.setText(self.i18n('language_label').lower())
 
-        self.url_input.setPlaceholderText(self.i18n('url_placeholder').lower())
+        self.section_source_label.setText(self.i18n('section_source').lower())
+        self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
         self.btn_paste.setText(self.i18n('paste_button').lower())
         self.btn_clear.setText(self.i18n('clear_button').lower())
         self.dest_label.setText(self.i18n('destination_folder').lower())
-        self.btn_browse.setText(self.i18n('browse_folder').lower())
-        self.btn_open_folder.setText(self.i18n('open_folder').lower())
+        self.btn_browse.setText(f"🔍 {self.i18n('browse_folder').lower()}")
+        self.btn_open_folder.setText(f"📁 {self.i18n('open_folder').lower()}")
 
+        self.section_preview_label.setText(self.i18n('section_preview').lower())
+        if not self.last_fetched_url:
+            self.preview_title.setText(self.i18n('preview_empty').lower())
+
+        self.section_options_label.setText(self.i18n('section_options').lower())
         self.radio_video.setText(self.i18n('mode_video').lower())
         self.radio_audio.setText(self.i18n('mode_audio').lower())
         self.radio_split.setText(self.i18n('mode_split').lower())
         self.radio_thumbnail.setText(self.i18n('mode_thumbnail').lower())
+        self.thumb_mode_notice.setText(self.i18n('notice_thumbnail_mode').lower())
         self.chk_video_muted.setText(self.i18n('opt_video_muted').lower())
 
         self.quality_label.setText(self.i18n('quality_label').lower())
@@ -845,11 +948,22 @@ class MainWindow(QMainWindow):
         self.chk_playlist.setText(self.i18n('opt_playlist').lower())
         self.playlist_tip.setText(self.i18n('playlist_notice').lower())
 
-        self.btn_download.setText(self.i18n('btn_download').lower())
+        if self.download_thread and self.download_thread.isRunning():
+            self.btn_download.setText(self.i18n('btn_downloading').lower())
+        else:
+            self.btn_download.setText(self.i18n('btn_download').lower())
         self.btn_cancel.setText(self.i18n('btn_cancel').lower())
         self.btn_open_file.setText(self.i18n('open_file').lower())
 
-        self.pct_box.label_widget.setText(self.i18n('status_downloading').lower())
+        if not self.download_thread or not self.download_thread.isRunning():
+            if self.last_downloaded_file:
+                self.status_label.setText(self.i18n('status_finished').lower())
+            elif self.last_fetched_url:
+                self.status_label.setText(self.i18n('preview_ready').lower())
+            else:
+                self.status_label.setText(self.i18n('status_ready').lower())
+
+        self.pct_box.label_widget.setText(self.i18n('progress_label').lower())
         self.speed_box.label_widget.setText(self.i18n('speed_label').lower())
         self.eta_box.label_widget.setText(self.i18n('eta_label').lower())
         self.size_box.label_widget.setText(self.i18n('size_label').lower())
@@ -872,6 +986,19 @@ class MainWindow(QMainWindow):
         idx = self.quality_combo.findData(cur_q)
         if idx >= 0:
             self.quality_combo.setCurrentIndex(idx)
+
+        # Update audio quality combo according to format
+        self._update_wav_state()
+
+        # Update subtitle lang combo text
+        cur_sl = self.sub_lang_combo.currentData()
+        self.sub_lang_combo.clear()
+        self.sub_lang_combo.addItem(self.i18n('sub_lang_pt').lower(), 'pt')
+        self.sub_lang_combo.addItem(self.i18n('sub_lang_en').lower(), 'en')
+        self.sub_lang_combo.addItem(self.i18n('sub_lang_all').lower(), 'all')
+        idx = self.sub_lang_combo.findData(cur_sl)
+        if idx >= 0:
+            self.sub_lang_combo.setCurrentIndex(idx)
 
         # Update audio quality combo according to format
         self._update_wav_state()
@@ -944,6 +1071,8 @@ class MainWindow(QMainWindow):
         self.audio_quality_label.setVisible(show_audio_opts)
         self.audio_quality_combo.setVisible(show_audio_opts)
 
+        self.thumb_mode_notice.setVisible(is_thumb)
+
         self.chk_video_muted.setVisible(is_split)
         self.chk_embed_thumb.setVisible(not is_thumb)
         self.chk_embed_meta.setVisible(not is_thumb)
@@ -998,22 +1127,26 @@ class MainWindow(QMainWindow):
         self.preview_title.setText(info.get('title', ''))
         uploader = info.get('uploader', '')
         if uploader:
-            self.preview_channel.setText(f'canal: {uploader}')
+            prefix = self.i18n('channel_prefix').lower()
+            self.preview_channel.setText(f'{prefix} {uploader}')
 
         dur = info.get('duration_str', '')
         if dur and dur != '--:--':
-            self.preview_duration.setText(f'tempo: {dur}')
+            prefix = self.i18n('duration_prefix').lower()
+            self.preview_duration.setText(f'{prefix} {dur}')
 
         if info.get('is_playlist'):
             count = info.get('playlist_count', 0)
-            self.preview_playlist_badge.setText(f'playlist: {count} itens' if count else 'playlist')
+            prefix = self.i18n('playlist_prefix').lower()
+            suffix = self.i18n('items_suffix').lower()
+            self.preview_playlist_badge.setText(f'{prefix} {count} {suffix}' if count else f'{prefix}')
             self.chk_playlist.setChecked(True)
         else:
             self.preview_playlist_badge.setText('')
 
         if pixmap and not pixmap.isNull():
             scaled = pixmap.scaled(
-                140, 78, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation
+                148, 83, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation
             )
             self.thumb_label.setPixmap(scaled)
             self.thumb_label.setText('')
@@ -1022,7 +1155,7 @@ class MainWindow(QMainWindow):
             self.thumb_label.setText('preview')
 
         self.status_label.setText(self.i18n('preview_ready').lower())
-        self.status_dot.setStyleSheet('color: #10B981; font-size: 13px;')
+        self.status_dot.setStyleSheet('color: #10b981; font-size: 13px;')
 
     @Slot(str)
     def _on_metadata_failed(self, error: str) -> None:
