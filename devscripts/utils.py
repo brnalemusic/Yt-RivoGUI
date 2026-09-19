@@ -32,25 +32,36 @@ def read_version(fname='yt_dlp/version.py', varname='__version__'):
 
 
 def is_valid_version(version: str) -> bool:
-    return bool(re.fullmatch(r'\d+(?:\.\d+){0,3}', version))
+    if not version:
+        return False
+    clean = str(version).strip().lstrip('vV')
+    return bool(re.fullmatch(r'\d+(?:\.\d+){0,3}', clean))
 
 
 def calculate_version(version=None, fname='yt_dlp/version.py'):
     if version:
-        assert is_valid_version(version), 'Version must be numeric and use 1-4 dot-separated segments'
-        return version
+        clean = str(version).strip().lstrip('vV')
+        if clean:
+            assert is_valid_version(clean), 'Version must be numeric and use 1-4 dot-separated segments'
+            return clean
 
-    revision = version
-    version = dt.datetime.now(dt.timezone.utc).strftime('%Y.%m.%d')
+    # For Yt-RivoGUI, never generate a date as version.
+    # Preserve the real project version from app/__init__.py or fname.
+    try:
+        from pathlib import Path
+        app_init = Path(__file__).resolve().parent.parent / 'app' / '__init__.py'
+        if app_init.exists():
+            content = app_init.read_text(encoding='utf-8')
+            m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', content)
+            if m:
+                return m.group(1).strip().lstrip('vV')
+    except Exception:
+        pass
 
-    if revision:
-        assert re.fullmatch(r'[0-9]+', revision), 'Revision must be numeric'
-    else:
-        old_version = read_version(fname=fname).split('.')
-        if version.split('.') == old_version[:3]:
-            revision = str(int(([*old_version, 0])[3]) + 1)
-
-    return f'{version}.{revision}' if revision else version
+    try:
+        return read_version(fname=fname)
+    except Exception:
+        return '0.0.3.0'
 
 
 def get_filename_args(has_infile=False, default_outfile=None):

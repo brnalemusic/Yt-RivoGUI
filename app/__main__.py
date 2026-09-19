@@ -4,6 +4,12 @@ import argparse
 import io
 import logging
 import sys
+from pathlib import Path
+
+# Ensure root directory is on sys.path so embedded engine is always resolved
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(_ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_ROOT_DIR))
 
 # Ensure stdout and stderr exist even in Windows noconsole / pythonw mode
 if sys.stdout is None:

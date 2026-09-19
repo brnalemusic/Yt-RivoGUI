@@ -101,15 +101,27 @@ jobs:
           INPUTS = json.loads(os.environ['INPUTS'])
           timestamp = dt.datetime.now(tz=dt.timezone.utc).strftime('%Y.%m.%d.%H%M%S.%f')
           version = INPUTS.get('version')
-          if version and '.' not in version:
-              # build.yml was dispatched with only a revision as the version input value
-              version_parts = [*timestamp.split('.')[:3], version]
-          elif not version:
-              # build.yml was dispatched without any version input value, so include .HHMMSS revision
-              version_parts = timestamp.split('.')[:4]
-          else:
-              # build.yml was called or dispatched with a complete version input value
-              version_parts = version.split('.')
+          if version:
+              version = str(version).strip().lstrip('vV')
+          if not version:
+              # Yt-RivoGUI uses semantic versioning; read real project version from app/__init__.py
+              try:
+                  with open('app/__init__.py', encoding='utf-8') as f:
+                      m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', f.read())
+                      if m:
+                          version = m.group(1).strip().lstrip('vV')
+              except Exception:
+                  pass
+          if not version:
+              try:
+                  with open('yt_dlp/version.py', encoding='utf-8') as f:
+                      m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', f.read())
+                      if m:
+                          version = m.group(1).strip().lstrip('vV')
+              except Exception:
+                  pass
+          version = version or '0.0.3.0'
+          version_parts = version.split('.')
           assert all(re.fullmatch(r'[0-9]+', part) for part in version_parts), 'Version must be numeric'
           outputs = {
               'origin': INPUTS.get('origin') or os.environ['REPOSITORY'],
@@ -203,21 +215,34 @@ jobs:
           python-version: '3.13'
 
       - name: Install Requirements
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           python -m pip install -U pip
           python -m pip install -e ".[gui]"
           python -m pip install -r "bundle/requirements/win-x64-pyinstaller.txt" pillow
 
       - name: Prepare
+        shell: pwsh
         run: |
-          python devscripts/update-version.py -c "${CHANNEL}" -r "${ORIGIN}" "${VERSION}"
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          python devscripts/update-version.py -c "${env:CHANNEL}" -r "${env:ORIGIN}" "${env:VERSION}"
+          python devscripts/make_lazy_extractors.py
 
       - name: Build GUI app
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           python devscripts/build_gui.py
 
       - name: Test GUI build
+        shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
           python devscripts/test_build.py
 
       - name: Upload artifacts

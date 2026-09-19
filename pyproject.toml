@@ -65,6 +65,14 @@ gui = [
     "PySide6>=6.8.0",
     "yt-dlp-ejs>=0.8.0",
     "pillow>=10.0.0",
+    "brotli ; implementation_name == 'cpython' and sys_platform != 'ios'",
+    "brotlicffi ; implementation_name != 'cpython'",
+    "certifi",
+    "mutagen",
+    "pycryptodomex",
+    "requests>=2.32.2,<3",
+    "urllib3>=2.0.2,<3",
+    "websockets>=13.0",
 ]
 curl-cffi = [
     "curl-cffi>=0.5.10,!=0.6.*,!=0.7.*,!=0.8.*,!=0.9.*,<0.17 ; implementation_name == 'cpython'",

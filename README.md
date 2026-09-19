@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.0.2.1-10B981?style=flat-square" alt="Version 0.0.2.1" />
+  <img src="https://img.shields.io/badge/version-0.0.3.0-10B981?style=flat-square" alt="Version 0.0.3.0" />
   <img src="https://img.shields.io/badge/python-3.10%2B-22C55E?style=flat-square" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/framework-pyside6-34D399?style=flat-square" alt="PySide6" />
   <img src="https://img.shields.io/badge/platform-windows%20(10%20%2F%2011%20x64)-10B981?style=flat-square" alt="Platform" />
@@ -21,7 +21,7 @@
 
 ## overview
 
-`yt-rivogui` is a standalone desktop application providing a streamlined graphical frontend for `yt-dlp`. designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features an obsidian-and-emerald minimalist theme, monospaced typography, and lowercase interface styling, delivering full control over downloads while keeping the interface distraction-free, reliable, and lightweight.
+`yt-rivogui` is a standalone desktop media downloader embodying a full graphical edition of `yt-dlp` with the engine built directly into the application (no external `yt-dlp` installation or command-line setup required). designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features an obsidian-and-emerald minimalist theme, monospaced typography, and lowercase interface styling, delivering full control over downloads while keeping the interface distraction-free, reliable, and lightweight.
 
 ---
 
@@ -55,7 +55,7 @@
 ### option a: standalone release (recommended for end users)
 
 1. download either:
-   - `Yt-RivoGUI-v0.0.2.1-windows.zip` (recommended; avoids browser heuristic download warnings).
+   - `Yt-RivoGUI-v0.0.3.0-windows.zip` (recommended; avoids browser heuristic download warnings).
    - `Yt-RivoGUI.exe` (direct standalone executable).
    from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required.
@@ -155,7 +155,7 @@ python update-version.py 0.0.1.0
 ./update-version.ps1 0.0.1.0
 ```
 
-this atomically updates `yt_dlp/version.py`, which is imported by `app` and displayed in the application header and build metadata.
+this atomically updates `app/__init__.py`, `yt_dlp/version.py`, and `README.md`. the version is displayed in the application header badge and build metadata, ensuring the app always presents the true release version rather than build timestamps.
 
 ---
 

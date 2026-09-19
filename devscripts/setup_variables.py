@@ -55,11 +55,11 @@ def setup_variables(environment):
     elif source_repo == STABLE_REPOSITORY:
         resolved_source = 'stable'
 
-    revision = None
-    if INPUTS['prerelease'] or not json.loads(environment['HAS_RELEASE_KEY']):
-        revision = dt.datetime.now(tz=dt.timezone.utc).strftime('%H%M%S')
-
-    version = calculate_version(INPUTS.get('version') or revision)
+    version_input = (INPUTS.get('version') or '').strip().lstrip('vV')
+    if version_input:
+        version = calculate_version(version_input)
+    else:
+        version = calculate_version()
 
     target_repo = PROCESSED['target_repo']
     target_tag = PROCESSED['target_tag']

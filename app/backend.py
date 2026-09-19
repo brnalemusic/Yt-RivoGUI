@@ -4,9 +4,15 @@ import logging
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+
+# Ensure repository root is on sys.path so the embedded yt_dlp technology is always loaded directly
+_ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(_ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(_ROOT_DIR))
 
 from yt_dlp import YoutubeDL
 
@@ -95,7 +101,7 @@ class DownloadCancelledException(Exception):
 
 
 class YtDLBackend:
-    """Enhanced wrapper around yt-dlp providing video/audio/thumbnail downloads."""
+    """Core embedded downloader backend running the media downloading technology directly inside Yt-RivoGUI."""
 
     def __init__(self, output_dir: str | None = None, *, verbose: bool = False):
         self.output_dir = str(output_dir) if output_dir else str(get_default_download_dir())

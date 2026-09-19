@@ -46,10 +46,25 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
 
 ---
 
-## 5. Codebase Architecture Overview
+## 5. Mandatory Documentation Synchronization (README.md, Guides & Docstrings)
+
+- **Always inspect and update project documentation whenever making code, architecture, or feature changes.**
+- Whenever an AI assistant or agent:
+  - Modifies, adds, or refactors features, UI options, CLI flags, or application behavior;
+  - Updates, embeds, removes, or replaces libraries, technologies, or dependencies;
+  - Changes versioning patterns, packaging workflows, build scripts, or GitHub Actions pipelines;
+- The agent **MUST proactively review and update all relevant documentation**:
+  - **`README.md`**: Ensure descriptions, feature lists, quickstart guides, installation steps, build instructions, and versioning guides faithfully match the current code state.
+  - **No Obsolete Information**: Never leave stale or conflicting text describing old technologies, outdated command syntax, or removed dependencies that the AI has changed or replaced.
+  - **Docstrings & Comments**: Update function/class docstrings and architectural notes to accurately reflect any new mechanisms or behavior.
+  - **Mandatory Final Review**: Before declaring any task complete, perform a targeted check across documentation files to guarantee 100% synchronization.
+
+---
+
+## 6. Codebase Architecture Overview
 
 - **`app/backend.py`**:
-  - Backend media handling and yt-dlp integration.
+  - Core embedded media downloader backend running yt-dlp technology natively in-process (not an external CLI wrapper; no separate yt-dlp installation needed).
   - Houses `DownloadOptions`, `ProgressInfo`, and `YtDLBackend`.
   - Configures download pipelines, format selection, output templates, and FFmpeg postprocessors (`FFmpegExtractAudio`, `FFmpegMetadata`, `FFmpegEmbedSubtitle`, `EmbedThumbnail`).
   - Implements modes: `video`, `audio`, `split` (video + audio separated), and `thumbnail_only`.
@@ -66,7 +81,7 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
 
 ---
 
-## 6. Verification & Testing Protocol
+## 7. Verification & Testing Protocol
 
 Before finishing any task, run the test suites to ensure zero regressions:
 
@@ -77,3 +92,4 @@ pytest test/test_formats_and_split.py test/test_gui_versioning.py -v
 # 2. Verify application import and startup check
 python -m app --test-startup
 ```
+

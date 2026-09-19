@@ -36,6 +36,15 @@ def build(onefile: bool = True, clean: bool = True, dist_dir: Path | None = None
         except Exception as e:
             print(f'Notice: Could not generate ICO from PNG: {e}')
 
+    # Ensure lazy_extractors.py is generated for fast startup and bundled extraction
+    lazy_extractors_script = ROOT_DIR / 'devscripts' / 'make_lazy_extractors.py'
+    if lazy_extractors_script.exists():
+        try:
+            subprocess.run([sys.executable, str(lazy_extractors_script)], check=True)
+            print('Generated lazy_extractors.py successfully')
+        except Exception as e:
+            print(f'Notice: Could not generate lazy_extractors: {e}')
+
     # Path separator for --add-data: ; on Windows, : on Unix
     sep = ';' if sys.platform == 'win32' else ':'
     add_data = f'app/assets{sep}app/assets'
@@ -54,6 +63,13 @@ def build(onefile: bool = True, clean: bool = True, dist_dir: Path | None = None
         '--collect-all=yt_dlp_ejs',
         '--noconfirm',
     ]
+
+    for extra_pkg in ('mutagen', 'pycryptodomex', 'websockets'):
+        try:
+            __import__(extra_pkg)
+            cmd.append(f'--collect-all={extra_pkg}')
+        except ImportError:
+            pass
 
     if onefile:
         cmd.append('--onefile')
@@ -87,8 +103,8 @@ def build(onefile: bool = True, clean: bool = True, dist_dir: Path | None = None
                 from app import __version__
                 version_str = __version__
             except Exception:
-                version_str = '0.0.1.0'
-        version_str = str(version_str).lstrip('v')
+                version_str = '0.0.3.0'
+        version_str = str(version_str).strip().lstrip('vV')
 
         # Clean any old zip files in dist_path to avoid obsolete versions
         for old_zip in dist_path.glob('*.zip'):
