@@ -135,7 +135,9 @@ python devscripts/test_build.py
 python devscripts/test_build.py --install-smoke
 ```
 
-Inno Setup 6.7+ is required for step 4. `build_gui.py` finds `ISCC.exe` on `PATH`, via `INNO_SETUP_COMPILER` / `ISCC`, or in the default installation folders.
+Inno Setup 6.7+ is required for step 4. `build_gui.py` finds `ISCC.exe` on `PATH`, via `INNO_SETUP_COMPILER` / `ISCC`, or in the `Inno Setup 6` / `Inno Setup 7` folders under `Program Files`, `Program Files (x86)` and `%LOCALAPPDATA%\Programs`.
+
+Install Inno Setup from the [jrsoftware GitHub releases](https://github.com/jrsoftware/issrc/releases): since March 2026 the `files.jrsoftware.org` installer links only serve `.issig` signatures, so the old `https://files.jrsoftware.org/is/6/innosetup-*.exe` URLs return 404. The Windows build job in `build.yml` installs the pinned 6.7.3 release asset only when no `ISCC.exe` exists, verifies its SHA-256 before running it, and falls back to the newest published release (verifying the checksum GitHub reports for that asset). Never reintroduce a hard-coded jrsoftware FTP/HTTPS installer URL.
 
 To verify the real gyan.dev download manually, run the built installer silently with `YTRIVO_FFMPEG_FORCE=1` and confirm `{app}\bin\ffmpeg.exe` and `{app}\bin\ffprobe.exe` exist before uninstalling. Never treat the live download as a required CI step.
 

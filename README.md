@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.0.4.0-10B981?style=flat-square" alt="Version 0.0.4.0" />
+  <img src="https://img.shields.io/badge/version-0.0.4.1-10B981?style=flat-square" alt="Version 0.0.4.1" />
   <img src="https://img.shields.io/badge/python-3.11%2B-22C55E?style=flat-square" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/framework-pyside6-34D399?style=flat-square" alt="PySide6" />
   <img src="https://img.shields.io/badge/platform-windows%20(10%20%2F%2011%20x64)-10B981?style=flat-square" alt="Platform" />
@@ -90,7 +90,7 @@ the installer registers the app in windows settings, so it can be removed from t
 ### option b: portable release
 
 1. download either:
-   - `Yt-RivoGUI-v0.0.4.0-windows.zip` (recommended; avoids browser heuristic download warnings).
+   - `Yt-RivoGUI-v0.0.4.1-windows.zip` (recommended; avoids browser heuristic download warnings).
    - `Yt-RivoGUI.exe` (direct standalone executable).
    from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required. portable builds also update themselves in place.
@@ -148,7 +148,7 @@ the release pipeline uses pyinstaller for `Yt-RivoGUI.exe` and inno setup 6.7+ f
 prerequisites:
 
 - python 3.11+ with the `gui` extra dependencies (includes `pillow` for the installer artwork).
-- inno setup 6.7 or newer. `build_gui.py` looks for `ISCC.exe` on `PATH`, then `INNO_SETUP_COMPILER` / `ISCC`, then the default installation folders.
+- inno setup 6.7 or newer, downloaded from the [jrsoftware github releases](https://github.com/jrsoftware/issrc/releases) (the old `files.jrsoftware.org` install links were retired in march 2026 and now return 404). `build_gui.py` looks for `ISCC.exe` on `PATH`, then `INNO_SETUP_COMPILER` / `ISCC`, then the `Inno Setup 6` / `Inno Setup 7` folders under `Program Files`, `Program Files (x86)` and `%LOCALAPPDATA%\Programs`.
 
 ### windows powershell
 
@@ -269,6 +269,8 @@ releases are automated via github actions (`.github/workflows/release.yml` and `
    ```
    pushing the tag is what triggers `.github/workflows/release.yml` (`on: push: tags`). the filter only accepts four-part numeric tags (`0.0.4.0`, optionally `v0.0.4.0`), and the workflow aborts when the tag does not match `__version__` in `app/__init__.py` — so always run step 1 first and re-tag if the version check fails. if the tag does not start a run (for example the tag already existed), run the `Release` workflow manually from the actions tab with `version` and `target` set to the tag; that is the supported fallback.
 3. github actions builds `Yt-RivoGUI.exe`, the portable zip and the branded installer, computes sha-256 checksums, regenerates `latest.json` from the merged artifacts, and publishes everything to a new github release.
+
+> **installer toolchain in ci**: the windows build job installs inno setup 6.7.3 from its pinned `is-6_7_3` github release asset only when no `ISCC.exe` is found on the runner, verifies its sha-256 (`9c73c3ba…b732`) before running it, and falls back to the newest published jrsoftware release (verifying the checksum github reports for that asset) if the pinned asset ever disappears.
 
 release assets:
 

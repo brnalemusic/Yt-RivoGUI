@@ -82,7 +82,7 @@ def _write_version_file(path: Path, version: str) -> Path:
 
 
 def find_iscc() -> Path | None:
-    """Locates the Inno Setup 6 compiler."""
+    """Locates the Inno Setup 6.7+ compiler (6.x is preferred over newer majors)."""
     override = os.environ.get('INNO_SETUP_COMPILER') or os.environ.get('ISCC')
     if override:
         candidate = Path(override)
@@ -99,13 +99,15 @@ def find_iscc() -> Path | None:
     for base in bases:
         if not base:
             continue
-        candidates = [
-            Path(base) / 'Inno Setup 6' / 'ISCC.exe',
-            Path(base) / 'Programs' / 'Inno Setup 6' / 'ISCC.exe',
-        ]
-        for candidate in candidates:
-            if candidate.is_file():
-                return candidate
+        # Inno Setup installs into "Inno Setup 6", "Inno Setup 7", ...; sorting by name
+        # keeps the validated 6.x line first and still accepts newer majors.
+        for root in (Path(base), Path(base) / 'Programs'):
+            if not root.is_dir():
+                continue
+            for setup_dir in sorted(root.glob('Inno Setup *')):
+                candidate = setup_dir / 'ISCC.exe'
+                if candidate.is_file():
+                    return candidate
     return None
 
 
@@ -269,7 +271,7 @@ def build(
     if installer:
         iscc = find_iscc()
         if iscc is None:
-            message = 'Inno Setup 6 compiler not found; skipping installer'
+            message = 'Inno Setup 6.7+ compiler not found; skipping installer'
             if require_installer:
                 print(f'[build] ERROR: {message}', file=sys.stderr)
                 return 1

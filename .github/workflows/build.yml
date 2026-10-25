@@ -228,26 +228,63 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
-          $candidates = @(
-            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
-            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
-          )
-          $iscc = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-          $supported = $false
-          if ($iscc) {
-            $raw = (Get-Item -LiteralPath $iscc).VersionInfo.ProductVersion
-            $version = [version]($raw.Split(' ')[0])
-            $supported = $version -ge [version]'6.7'
+
+          # Inno Setup has published its installers as immutable GitHub releases since
+          # March 2026; files.jrsoftware.org only keeps the *.issig signatures now, so the
+          # retired /is/6/innosetup-*.exe download links return 404.
+          $pinnedVersion = "6.7.3"
+          $pinnedUrl = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
+          $pinnedSha256 = "9c73c3bae7ed48d44112a0f48e66742c00090bdb5bef71d9d3c056c66e97b732"
+
+          # ISCC.exe carries no usable version resource (0.0.0.0 for every release), so the
+          # compiler is located by folder instead of by its file version. Prefer the
+          # validated "Inno Setup 6" line, then fall back to any newer major (7, ...).
+          function Find-Iscc {
+            $candidates = @()
+            $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($command) { $candidates += $command.Source }
+            foreach ($base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) {
+              if (-not $base) { continue }
+              foreach ($root in @($base, (Join-Path $base "Programs"))) {
+                if (-not (Test-Path -LiteralPath $root)) { continue }
+                Get-ChildItem -LiteralPath $root -Directory -Filter "Inno Setup *" -ErrorAction SilentlyContinue |
+                  Sort-Object Name |
+                  ForEach-Object { $candidates += (Join-Path $_.FullName "ISCC.exe") }
+              }
+            }
+            return $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           }
-          if (-not $supported) {
-            Write-Output "Installing Inno Setup 6.7.3..."
-            $setup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
-            Invoke-WebRequest -Uri 'https://files.jrsoftware.org/is/6/innosetup-6.7.3.exe' -OutFile $setup
+
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            if (-not $env:RUNNER_TEMP) { $env:RUNNER_TEMP = [System.IO.Path]::GetTempPath() }
+            $setup = Join-Path $env:RUNNER_TEMP "innosetup-$pinnedVersion.exe"
+            $expected = $pinnedSha256
+            Write-Output "Installing Inno Setup $pinnedVersion from $pinnedUrl"
+            try {
+              Invoke-WebRequest -Uri $pinnedUrl -OutFile $setup
+            } catch {
+              # Never let a moved/retired asset break the release: fall back to the newest
+              # published release and verify the checksum GitHub reports for that asset.
+              Write-Output "Pinned download failed ($($_.Exception.Message)); resolving the newest release instead."
+              $headers = @{ "User-Agent" = "Yt-RivoGUI-CI"; "Accept" = "application/vnd.github+json" }
+              $release = Invoke-RestMethod -Uri "https://api.github.com/repos/jrsoftware/issrc/releases/latest" -Headers $headers
+              $asset = $release.assets | Where-Object { $_.name -match "^innosetup-[\d.]+(-x64)?\.exe$" } | Select-Object -First 1
+              if (-not $asset) { throw "no Inno Setup installer asset found in $($release.tag_name)" }
+              Write-Output "Using $($asset.name) from $($release.tag_name)"
+              Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $setup
+              $expected = ($asset.digest -replace "^sha256:", "")
+            }
+            if (-not $expected) { throw "no SHA-256 checksum available for the Inno Setup download" }
+            $actual = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash
+            if ($actual -ne $expected.ToUpperInvariant()) {
+              throw "SHA-256 mismatch for the Inno Setup download: expected $expected, got $actual"
+            }
+            Write-Output "SHA-256 verified: $actual"
             Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait
-            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            $iscc = Find-Iscc
           }
-          if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup compiler not found" }
+          if (-not $iscc) { throw "Inno Setup compiler not found" }
           "INNO_SETUP_COMPILER=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Output "Using $iscc"
 
