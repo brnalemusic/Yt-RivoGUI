@@ -61,7 +61,9 @@ def calculate_version(version=None, fname='yt_dlp/version.py'):
     try:
         return read_version(fname=fname)
     except Exception:
-        return '0.0.3.0'
+        from app import __version__
+
+        return __version__
 
 
 def get_filename_args(has_infile=False, default_outfile=None):

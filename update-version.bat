@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 if "%~1"=="" (
     echo Usage: update-version.bat W.X.Y.Z
-    echo Example: update-version.bat 0.0.1.0
+    echo Example: update-version.bat 0.0.4.0
     exit /b 1
 )
 

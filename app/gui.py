@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+import threading
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -13,7 +14,8 @@ try:
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
         QLabel, QLineEdit, QPushButton, QTextEdit, QFileDialog, QComboBox,
-        QCheckBox, QProgressBar, QFrame, QScrollArea, QButtonGroup, QRadioButton
+        QCheckBox, QProgressBar, QFrame, QScrollArea, QButtonGroup, QRadioButton,
+        QMessageBox
     )
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError('PySide6 is required for the GUI runtime. Install it with: pip install PySide6') from exc
@@ -21,6 +23,20 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from app import __version__
 from app.backend import YtDLBackend, DownloadOptions, ProgressInfo, get_default_download_dir, clean_ansi
 from app.i18n import I18nManager
+from app.updater import (
+    RELEASES_URL,
+    CheckResult,
+    SingleInstanceGuard,
+    UpdateCancelled,
+    UpdateError,
+    UpdateSettings,
+    apply_update,
+    check_for_updates,
+    cleanup_update_cache,
+    download_asset,
+    is_frozen,
+    is_running_installed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +121,62 @@ class DownloadWorker(QThread):
         except Exception as exc:
             clean_err = clean_ansi(str(exc)).strip()
             self.failed.emit(clean_err or 'falha durante a execução do download')
+
+
+class UpdateCheckWorker(QThread):
+    """Checks the stable release channel without blocking the UI."""
+
+    checked = Signal(object)
+
+    def __init__(self, current_version: str):
+        super().__init__()
+        self.current_version = current_version
+
+    def run(self) -> None:
+        try:
+            result = check_for_updates(self.current_version)
+        except Exception as exc:  # defensive: never kill a QThread silently
+            logger.debug('update check failed', exc_info=True)
+            result = CheckResult(
+                status='error',
+                current_version=self.current_version,
+                error_code='unknown',
+                error=str(exc),
+            )
+        self.checked.emit(result)
+
+
+class UpdateDownloadWorker(QThread):
+    """Downloads and verifies an update asset."""
+
+    progress = Signal(int, int)
+    downloaded = Signal(str)
+    failed = Signal(str)
+    cancelled = Signal()
+
+    def __init__(self, asset):
+        super().__init__()
+        self.asset = asset
+        self.cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
+
+    def run(self) -> None:
+        try:
+            path = download_asset(
+                self.asset,
+                progress=self.progress.emit,
+                cancel=self.cancel_event,
+            )
+        except UpdateCancelled:
+            self.cancelled.emit()
+            return
+        except Exception as exc:
+            logger.debug('update download failed', exc_info=True)
+            self.failed.emit(str(exc))
+            return
+        self.downloaded.emit(str(path))
 
 
 MINIMAL_MONO_STYLESHEET = """
@@ -411,7 +483,7 @@ QLabel#MetricLabel {
     color: #8b949e;
     font-size: 10px;
 }
-QLabel#VersionBadge {
+QPushButton#VersionBadge {
     background-color: #0e2a1d;
     color: #34d399;
     border: 1px solid #238636;
@@ -420,11 +492,60 @@ QLabel#VersionBadge {
     font-size: 10px;
     font-weight: 600;
 }
+QPushButton#VersionBadge:hover {
+    background-color: #123d29;
+    border-color: #34d399;
+    color: #ffffff;
+}
+QPushButton#VersionBadge:pressed {
+    background-color: #0b2016;
+}
+QPushButton#VersionBadge:disabled {
+    color: #2f6b4c;
+    border-color: #1a3c26;
+}
+
+/* UPDATE BANNER */
+QFrame#UpdateBanner {
+    background-color: #0e2a1d;
+    border: 1px solid #238636;
+    border-radius: 8px;
+}
+QLabel#UpdateTitle {
+    color: #f0f6fc;
+    font-size: 13px;
+    font-weight: 700;
+}
+QLabel#UpdateDetail {
+    color: #8b949e;
+    font-size: 11px;
+}
+QPushButton#UpdateGhost {
+    background-color: transparent;
+    color: #8b949e;
+    border: 1px solid #30363d;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 11px;
+}
+QPushButton#UpdateGhost:hover {
+    color: #ffffff;
+    border-color: #34d399;
+    background-color: #12301f;
+}
+QProgressBar#UpdateProgress {
+    background-color: #07120c;
+    border: 1px solid #1a3c26;
+    border-radius: 3px;
+    height: 6px;
+    text-align: center;
+    color: transparent;
+}
 """
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, *, allow_update_check: bool = True) -> None:
         super().__init__()
         self.i18n = I18nManager()
         self.logo_path = get_logo_path()
@@ -450,9 +571,30 @@ class MainWindow(QMainWindow):
         self.last_fetched_url = ''
         self.last_downloaded_file = ''
 
+        # Update state
+        self._allow_update_check = allow_update_check
+        self.update_settings = UpdateSettings.load()
+        self.update_check_thread: UpdateCheckWorker | None = None
+        self.update_download_thread: UpdateDownloadWorker | None = None
+        self._update_manual_check = False
+        self._update_state = 'hidden'
+        self._update_info = None
+        self._update_asset = None
+        self._update_path: Path | None = None
+        self._update_error_code: str | None = None
+        self._update_progress_value = 0
+        self._update_progress_text = ''
+
         self._build_ui()
         self.setStyleSheet(MINIMAL_MONO_STYLESHEET)
         self.apply_translations()
+
+        self.auto_update_timer = QTimer(self)
+        self.auto_update_timer.setInterval(12 * 60 * 60 * 1000)
+        self.auto_update_timer.timeout.connect(self._maybe_auto_update_check)
+        if self._allow_update_check:
+            self.auto_update_timer.start()
+            QTimer.singleShot(2500, self._maybe_auto_update_check)
 
     def _build_ui(self) -> None:
         central_widget = QWidget(self)
@@ -496,8 +638,11 @@ class MainWindow(QMainWindow):
         self.app_title_label.setObjectName('AppTitle')
         title_row.addWidget(self.app_title_label)
 
-        self.version_badge = QLabel(f'v{__version__}')
+        self.version_badge = QPushButton(f'v{__version__}')
         self.version_badge.setObjectName('VersionBadge')
+        self.version_badge.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.version_badge.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.version_badge.clicked.connect(self._manual_update_check)
         title_row.addWidget(self.version_badge)
         title_row.addStretch()
         title_box.addLayout(title_row)
@@ -527,6 +672,64 @@ class MainWindow(QMainWindow):
         header_layout.addLayout(lang_box)
 
         root_layout.addWidget(header_card)
+
+        # UPDATE BANNER
+        self.update_banner = QFrame()
+        self.update_banner.setObjectName('UpdateBanner')
+        update_layout = QVBoxLayout(self.update_banner)
+        update_layout.setContentsMargins(14, 11, 14, 11)
+        update_layout.setSpacing(7)
+
+        update_top_row = QHBoxLayout()
+        update_top_row.setSpacing(8)
+        update_text_box = QVBoxLayout()
+        update_text_box.setSpacing(2)
+        self.update_title = QLabel('')
+        self.update_title.setObjectName('UpdateTitle')
+        update_text_box.addWidget(self.update_title)
+        self.update_detail = QLabel('')
+        self.update_detail.setObjectName('UpdateDetail')
+        self.update_detail.setWordWrap(True)
+        update_text_box.addWidget(self.update_detail)
+        update_top_row.addLayout(update_text_box, 1)
+
+        self.update_notes_btn = QPushButton('')
+        self.update_notes_btn.setObjectName('UpdateGhost')
+        self.update_notes_btn.clicked.connect(self._open_update_notes)
+        update_top_row.addWidget(self.update_notes_btn)
+
+        self.update_skip_btn = QPushButton('')
+        self.update_skip_btn.setObjectName('UpdateGhost')
+        self.update_skip_btn.clicked.connect(self._skip_update_version)
+        update_top_row.addWidget(self.update_skip_btn)
+
+        self.update_later_btn = QPushButton('')
+        self.update_later_btn.setObjectName('UpdateGhost')
+        self.update_later_btn.clicked.connect(self._hide_update_banner)
+        update_top_row.addWidget(self.update_later_btn)
+
+        self.update_install_btn = QPushButton('')
+        self.update_install_btn.setObjectName('PrimaryButton')
+        self.update_install_btn.clicked.connect(self._on_update_install_clicked)
+        update_top_row.addWidget(self.update_install_btn)
+
+        update_layout.addLayout(update_top_row)
+
+        update_progress_row = QHBoxLayout()
+        update_progress_row.setSpacing(8)
+        self.update_progress = QProgressBar()
+        self.update_progress.setObjectName('UpdateProgress')
+        self.update_progress.setRange(0, 100)
+        self.update_progress.setValue(0)
+        update_progress_row.addWidget(self.update_progress, 1)
+        self.update_cancel_btn = QPushButton('')
+        self.update_cancel_btn.setObjectName('UpdateGhost')
+        self.update_cancel_btn.clicked.connect(self._cancel_update_download)
+        update_progress_row.addWidget(self.update_cancel_btn)
+        update_layout.addLayout(update_progress_row)
+
+        self.update_banner.setVisible(False)
+        root_layout.addWidget(self.update_banner)
 
         # SCROLL AREA FOR BODY
         scroll_area = QScrollArea()
@@ -876,6 +1079,10 @@ class MainWindow(QMainWindow):
         self.btn_toggle_logs.clicked.connect(self._toggle_logs)
         log_header_layout.addWidget(self.btn_toggle_logs)
         log_header_layout.addStretch()
+        self.chk_auto_update = QCheckBox('')
+        self.chk_auto_update.setChecked(self.update_settings.auto_check_updates)
+        self.chk_auto_update.toggled.connect(self._on_auto_update_toggled)
+        log_header_layout.addWidget(self.chk_auto_update)
         body_layout.addLayout(log_header_layout)
 
         self.log_view = QTextEdit()
@@ -915,6 +1122,7 @@ class MainWindow(QMainWindow):
         self.app_title_label.setText(self.i18n('app_title').lower())
         self.app_subtitle_label.setText(self.i18n('app_subtitle').lower())
         self.version_badge.setText(f'v{__version__}')
+        self.version_badge.setToolTip(self.i18n('update_check_tooltip').lower())
 
         self.section_source_label.setText(self.i18n('section_source').lower())
         self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
@@ -967,6 +1175,7 @@ class MainWindow(QMainWindow):
         self.speed_box.label_widget.setText(self.i18n('speed_label').lower())
         self.eta_box.label_widget.setText(self.i18n('eta_label').lower())
         self.size_box.label_widget.setText(self.i18n('size_label').lower())
+        self.chk_auto_update.setText(self.i18n('opt_auto_check_updates').lower())
 
         if self.log_view.isVisible():
             self.btn_toggle_logs.setText(self.i18n('toggle_logs_hide').lower())
@@ -1013,6 +1222,8 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.sub_lang_combo.setCurrentIndex(idx)
 
+        self._render_update_state()
+
     def _on_audio_format_changed(self) -> None:
         self._update_wav_state()
 
@@ -1043,6 +1254,397 @@ class MainWindow(QMainWindow):
         else:
             self.chk_embed_thumb.setEnabled(True)
             self.chk_embed_thumb.setToolTip('')
+
+    # ------------------------------------------------------------------
+    # update flow
+    # ------------------------------------------------------------------
+    def _set_update_state(self, state: str, *, info=None, error_code: str | None = None) -> None:
+        if info is not None:
+            self._update_info = info
+        self._update_state = state
+        self._update_error_code = error_code
+        self._render_update_state()
+
+    def _update_install_available(self) -> bool:
+        if not self._update_info or not is_frozen():
+            return False
+        try:
+            asset = self._update_info.asset_for(installed=is_running_installed())
+        except Exception:
+            return False
+        return bool(asset and asset.has_checksum)
+
+    def _render_update_state(self) -> None:
+        if not hasattr(self, 'update_banner'):
+            return
+
+        state = self._update_state
+        info = self._update_info
+        self.update_banner.setVisible(state != 'hidden')
+        if state == 'hidden':
+            return
+
+        self.update_notes_btn.setVisible(False)
+        self.update_skip_btn.setVisible(False)
+        self.update_later_btn.setVisible(False)
+        self.update_install_btn.setVisible(False)
+        self.update_cancel_btn.setVisible(False)
+        self.update_progress.setVisible(False)
+        self.update_progress.setValue(int(self._update_progress_value))
+        self.update_progress.setRange(0, 100)
+
+        if state == 'checking':
+            self.update_title.setText(self.i18n('update_checking').lower())
+            self.update_detail.setText(self.i18n('update_checking_detail').lower())
+            return
+
+        if state == 'up_to_date':
+            version = info.version if info else __version__
+            self.update_title.setText(self.i18n('update_up_to_date_title').lower())
+            self.update_detail.setText(
+                self.i18n('update_up_to_date_detail', version=version).lower()
+            )
+            self.update_later_btn.setText(self.i18n('update_close').lower())
+            self.update_later_btn.setVisible(True)
+            return
+
+        if state in {'error', 'source'}:
+            if state == 'source':
+                self.update_title.setText(
+                    self.i18n('update_available_title', version=info.version).lower()
+                    if info else self.i18n('update_available_title_generic').lower()
+                )
+                self.update_detail.setText(self.i18n('update_source_mode').lower())
+            else:
+                self.update_title.setText(self.i18n('update_error_title').lower())
+                code = self._update_error_code or 'unknown'
+                key = f'update_error_{code}'
+                message = self.i18n(key)
+                if message == key:
+                    message = self.i18n('update_error_unknown')
+                self.update_detail.setText(message.lower())
+
+            self.update_notes_btn.setText(self.i18n('update_releases').lower())
+            self.update_notes_btn.setVisible(True)
+            self.update_later_btn.setText(self.i18n('update_close').lower())
+            self.update_later_btn.setVisible(True)
+            if (
+                state == 'error'
+                and self._update_info is not None
+                and self._update_install_available()
+                and self._update_error_code in {'download', 'checksum', 'install'}
+            ):
+                self.update_install_btn.setText(self.i18n('update_retry').lower())
+                self.update_install_btn.setVisible(True)
+            return
+
+        if info is None:
+            self.update_banner.setVisible(False)
+            return
+
+        if state == 'available':
+            self.update_title.setText(
+                self.i18n('update_available_title', version=info.version).lower()
+            )
+            installable = self._update_install_available()
+            if not is_frozen():
+                self.update_detail.setText(self.i18n('update_source_mode').lower())
+            elif not installable:
+                self.update_detail.setText(self.i18n('update_no_asset').lower())
+            else:
+                self.update_detail.setText(
+                    self.i18n(
+                        'update_available_detail',
+                        current=__version__,
+                        latest=info.version,
+                    ).lower()
+                )
+            self.update_notes_btn.setText(self.i18n('update_notes').lower())
+            self.update_notes_btn.setVisible(True)
+            self.update_skip_btn.setText(self.i18n('update_skip').lower())
+            self.update_skip_btn.setVisible(True)
+            self.update_later_btn.setText(self.i18n('update_later').lower())
+            self.update_later_btn.setVisible(True)
+            if installable:
+                self.update_install_btn.setText(self.i18n('update_download_install').lower())
+                self.update_install_btn.setVisible(True)
+            else:
+                self.update_notes_btn.setText(self.i18n('update_releases').lower())
+            return
+
+        if state == 'downloading':
+            self.update_title.setText(
+                self.i18n('update_downloading_title', version=info.version).lower()
+            )
+            detail = self._update_progress_text or self.i18n('update_downloading_detail', percent=0, done='0 b', total='0 b')
+            self.update_detail.setText(detail.lower())
+            self.update_progress.setVisible(True)
+            self.update_cancel_btn.setText(self.i18n('update_cancel').lower())
+            self.update_cancel_btn.setVisible(True)
+            return
+
+        if state == 'ready':
+            self.update_title.setText(self.i18n('update_ready_title').lower())
+            self.update_detail.setText(
+                self.i18n('update_ready_detail', version=info.version).lower()
+            )
+            self.update_progress.setValue(100)
+            self.update_progress.setVisible(True)
+            self.update_notes_btn.setText(self.i18n('update_notes').lower())
+            self.update_notes_btn.setVisible(True)
+            self.update_later_btn.setText(self.i18n('update_later').lower())
+            self.update_later_btn.setVisible(True)
+            self.update_install_btn.setText(self.i18n('update_install_now').lower())
+            self.update_install_btn.setVisible(True)
+            return
+
+    def _manual_update_check(self) -> None:
+        self._update_manual_check = True
+        self._start_update_check()
+
+    def _maybe_auto_update_check(self) -> None:
+        if not self._allow_update_check or not self.update_settings.auto_check_updates:
+            return
+        if self.download_thread and self.download_thread.isRunning():
+            return
+        if self.update_check_thread and self.update_check_thread.isRunning():
+            return
+        if self.update_download_thread and self.update_download_thread.isRunning():
+            return
+        if not self.update_settings.should_check():
+            return
+        self._update_manual_check = False
+        self._start_update_check()
+
+    def _start_update_check(self) -> None:
+        if self.update_check_thread and self.update_check_thread.isRunning():
+            return
+        if self._update_manual_check:
+            self._set_update_state('checking')
+            self.log(f'> {self.i18n("log_update_checking").lower()}')
+        self.version_badge.setEnabled(False)
+        thread = UpdateCheckWorker(__version__)
+        self.update_check_thread = thread
+        thread.checked.connect(self._on_update_check_finished)
+        thread.finished.connect(lambda t=thread: self._on_update_check_thread_finished(t))
+        thread.start()
+
+    def _on_update_check_thread_finished(self, thread: UpdateCheckWorker) -> None:
+        if self.update_check_thread is thread:
+            self.update_check_thread = None
+        self.version_badge.setEnabled(True)
+        thread.deleteLater()
+
+    @Slot(object)
+    def _on_update_check_finished(self, result: CheckResult) -> None:
+        manual = self._update_manual_check
+        self._update_manual_check = False
+
+        if result.is_error:
+            self.log(
+                f'> {self.i18n("log_update_check_failed", error=result.error or result.error_code or "unknown").lower()}'
+            )
+            if manual:
+                self._set_update_state('error', error_code=result.error_code or 'unknown')
+            elif self._update_state == 'checking':
+                self._hide_update_banner()
+            return
+
+        self.update_settings.mark_checked()
+        self.update_settings.save()
+
+        if result.update_available and result.info:
+            self._update_info = result.info
+            if manual or self.update_settings.should_show_version(result.info.version):
+                self._update_path = None
+                self._update_asset = None
+                self._update_error_code = None
+                self._update_progress_value = 0
+                self._update_progress_text = ''
+                self._set_update_state('available')
+                self.log(f'> {self.i18n("log_update_available", version=result.info.version).lower()}')
+            elif self._update_state == 'checking':
+                self._hide_update_banner()
+            return
+
+        if manual:
+            self._set_update_state('up_to_date', info=result.info)
+            QTimer.singleShot(8000, self._hide_up_to_date_banner)
+        elif self._update_state == 'checking':
+            self._hide_update_banner()
+
+    def _hide_up_to_date_banner(self) -> None:
+        if self._update_state == 'up_to_date':
+            self._hide_update_banner()
+
+    def _hide_update_banner(self) -> None:
+        self._update_state = 'hidden'
+        self._render_update_state()
+
+    def _open_update_notes(self) -> None:
+        url = self._update_info.notes_url if self._update_info else RELEASES_URL
+        if not url:
+            url = RELEASES_URL
+        QDesktopServices.openUrl(QUrl(url))
+
+    def _skip_update_version(self) -> None:
+        if not self._update_info:
+            return
+        self.update_settings.skipped_version = self._update_info.version
+        self.update_settings.save()
+        self.log(f'> {self.i18n("log_update_skipped", version=self._update_info.version).lower()}')
+        self._hide_update_banner()
+
+    def _on_auto_update_toggled(self, checked: bool) -> None:
+        self.update_settings.auto_check_updates = bool(checked)
+        self.update_settings.save()
+        if checked and self._allow_update_check:
+            QTimer.singleShot(1000, self._maybe_auto_update_check)
+
+    def _on_update_install_clicked(self) -> None:
+        if self._update_state in {'ready', 'error'} and self._update_path:
+            self._install_update()
+            return
+        self._download_update()
+
+    def _download_update(self) -> None:
+        info = self._update_info
+        if info is None:
+            return
+        if self.download_thread and self.download_thread.isRunning():
+            self.status_label.setText(self.i18n('update_busy').lower())
+            self.status_dot.setStyleSheet('color: #F59E0B; font-size: 13px;')
+            return
+        if not is_frozen():
+            self._set_update_state('source')
+            return
+        if self.update_download_thread and self.update_download_thread.isRunning():
+            return
+
+        try:
+            asset = info.asset_for(installed=is_running_installed())
+        except Exception:
+            asset = None
+        if asset is None:
+            self._set_update_state('error', error_code='no_asset')
+            return
+        if not asset.has_checksum:
+            self._set_update_state('error', error_code='checksum_missing')
+            return
+
+        self._update_asset = asset
+        self._update_path = None
+        self._update_error_code = None
+        self._update_progress_value = 0
+        self._update_progress_text = ''
+        self._set_update_state('downloading')
+        self.log(f'> {self.i18n("log_update_downloading", version=info.version).lower()}')
+
+        thread = UpdateDownloadWorker(asset)
+        self.update_download_thread = thread
+        thread.progress.connect(self._on_update_download_progress)
+        thread.downloaded.connect(self._on_update_download_finished)
+        thread.failed.connect(self._on_update_download_failed)
+        thread.cancelled.connect(self._on_update_download_cancelled)
+        thread.finished.connect(lambda t=thread: self._on_update_download_thread_finished(t))
+        thread.start()
+
+    def _on_update_download_progress(self, downloaded: int, total: int) -> None:
+        percent = int(downloaded * 100 / total) if total else 0
+        percent = max(0, min(100, percent))
+        self._update_progress_value = percent
+        done_text = self._format_bytes(downloaded)
+        if total:
+            self._update_progress_text = self.i18n(
+                'update_downloading_detail',
+                percent=percent,
+                done=done_text,
+                total=self._format_bytes(total),
+            )
+        else:
+            self._update_progress_text = self.i18n(
+                'update_downloading_detail_unknown',
+                done=done_text,
+            )
+        if self._update_state == 'downloading':
+            self.update_progress.setValue(percent)
+            self.update_detail.setText(self._update_progress_text.lower())
+
+    @Slot(str)
+    def _on_update_download_finished(self, path: str) -> None:
+        self._update_path = Path(path)
+        self._update_progress_value = 100
+        self._set_update_state('ready')
+        self.log(f'> {self.i18n("log_update_downloaded", name=self._update_path.name).lower()}')
+
+    @Slot(str)
+    def _on_update_download_failed(self, error: str) -> None:
+        self._update_asset = None
+        self._update_path = None
+        lowered = error.lower()
+        code = 'checksum' if ('checksum' in lowered or 'sha256' in lowered or 'integrity' in lowered) else 'download'
+        self.log(f'> {self.i18n("log_update_download_failed", error=error).lower()}')
+        self._set_update_state('error', error_code=code)
+
+    def _on_update_download_cancelled(self) -> None:
+        self._update_asset = None
+        self._update_path = None
+        self.log(f'> {self.i18n("log_update_cancelled").lower()}')
+        self._set_update_state('available')
+
+    def _on_update_download_thread_finished(self, thread: UpdateDownloadWorker) -> None:
+        if self.update_download_thread is thread:
+            self.update_download_thread = None
+        thread.deleteLater()
+
+    def _cancel_update_download(self) -> None:
+        if self.update_download_thread and self.update_download_thread.isRunning():
+            self.update_download_thread.cancel()
+            self.update_cancel_btn.setEnabled(False)
+            self.update_detail.setText(self.i18n('update_cancelling').lower())
+
+    def _install_update(self) -> None:
+        info = self._update_info
+        path = self._update_path
+        if info is None or path is None or not path.is_file():
+            self._set_update_state('available')
+            return
+        if self.download_thread and self.download_thread.isRunning():
+            self.status_label.setText(self.i18n('update_busy').lower())
+            self.status_dot.setStyleSheet('color: #F59E0B; font-size: 13px;')
+            return
+        if not is_frozen():
+            self._set_update_state('source')
+            return
+
+        try:
+            apply_update(info, path, installed=is_running_installed())
+        except UpdateError as exc:
+            self.log(f'> {self.i18n("log_update_install_failed", error=str(exc)).lower()}')
+            self._set_update_state('error', error_code='install')
+            return
+        except Exception as exc:
+            logger.debug('unexpected update failure', exc_info=True)
+            self.log(f'> {self.i18n("log_update_install_failed", error=str(exc)).lower()}')
+            self._set_update_state('error', error_code='install')
+            return
+
+        self.status_label.setText(self.i18n('update_restarting').lower())
+        self.status_dot.setStyleSheet('color: #34d399; font-size: 13px;')
+        self.log(f'> {self.i18n("log_update_restarting").lower()}')
+        QTimer.singleShot(250, self.close)
+
+    @staticmethod
+    def _format_bytes(value: int) -> str:
+        size = float(max(0, value))
+        units = ('b', 'kb', 'mb', 'gb', 'tb')
+        index = 0
+        while size >= 1024 and index < len(units) - 1:
+            size /= 1024
+            index += 1
+        if index == 0:
+            return f'{int(size)} {units[index]}'
+        return f'{size:.1f} {units[index]}'
 
     def _on_language_changed(self, index: int) -> None:
         lang_code = self.lang_combo.itemData(index)
@@ -1215,6 +1817,11 @@ class MainWindow(QMainWindow):
             self.status_label.setText(self.i18n('alert_already_running').lower())
             return
 
+        if self.update_download_thread and self.update_download_thread.isRunning():
+            self.status_label.setText(self.i18n('update_busy').lower())
+            self.status_dot.setStyleSheet('color: #F59E0B; font-size: 13px;')
+            return
+
         # Prepare Options
         options = DownloadOptions()
         options.output_dir = self.output_dir
@@ -1324,8 +1931,20 @@ class MainWindow(QMainWindow):
         self.status_dot.setStyleSheet('color: #EF4444; font-size: 13px;')
         self.log(f'✖ erro: {error}')
 
+    def closeEvent(self, event) -> None:
+        if self.update_download_thread and self.update_download_thread.isRunning():
+            self.update_download_thread.cancel()
+            self.update_download_thread.wait(3000)
+        if self.metadata_thread and self.metadata_thread.isRunning():
+            self.metadata_thread.cancel()
+            self.metadata_thread.wait(1000)
+        if self.download_thread and self.download_thread.isRunning():
+            self.download_thread.cancel()
+            self.download_thread.wait(3000)
+        super().closeEvent(event)
 
-def run_gui() -> int:
+
+def run_gui(*, allow_update_check: bool = True, allow_multiple: bool = False) -> int:
     if sys.platform == 'win32':
         try:
             import ctypes
@@ -1334,6 +1953,24 @@ def run_gui() -> int:
             pass
 
     app = QApplication([])
-    window = MainWindow()
-    window.show()
-    return app.exec()
+    guard = None
+    if not allow_multiple:
+        guard = SingleInstanceGuard()
+        if not guard.acquired:
+            i18n = I18nManager()
+            QMessageBox.information(
+                None,
+                i18n('app_title'),
+                i18n('single_instance_message').lower(),
+            )
+            guard.release()
+            return 0
+
+    try:
+        cleanup_update_cache()
+        window = MainWindow(allow_update_check=allow_update_check)
+        window.show()
+        return app.exec()
+    finally:
+        if guard is not None:
+            guard.release()

@@ -120,7 +120,7 @@ jobs:
                           version = m.group(1).strip().lstrip('vV')
               except Exception:
                   pass
-          version = version or '0.0.3.0'
+          assert version, 'Could not determine the application version from app/__init__.py'
           version_parts = version.split('.')
           assert all(re.fullmatch(r'[0-9]+', part) for part in version_parts), 'Version must be numeric'
           outputs = {
@@ -223,6 +223,34 @@ jobs:
           python -m pip install -e ".[gui]"
           python -m pip install -r "bundle/requirements/win-x64-pyinstaller.txt" pillow
 
+      - name: Ensure Inno Setup 6.7+
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $candidates = @(
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          $supported = $false
+          if ($iscc) {
+            $raw = (Get-Item -LiteralPath $iscc).VersionInfo.ProductVersion
+            $version = [version]($raw.Split(' ')[0])
+            $supported = $version -ge [version]'6.7'
+          }
+          if (-not $supported) {
+            Write-Output "Installing Inno Setup 6.7.3..."
+            $setup = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
+            Invoke-WebRequest -Uri 'https://files.jrsoftware.org/is/6/innosetup-6.7.3.exe' -OutFile $setup
+            Start-Process -FilePath $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          if (-not (Test-Path -LiteralPath $iscc)) { throw "Inno Setup compiler not found" }
+          "INNO_SETUP_COMPILER=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Output "Using $iscc"
+
       - name: Prepare
         shell: pwsh
         run: |
@@ -236,14 +264,14 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
-          python devscripts/build_gui.py
+          python devscripts/build_gui.py --require-installer
 
       - name: Test GUI build
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $PSNativeCommandUseErrorActionPreference = $true
-          python devscripts/test_build.py
+          python devscripts/test_build.py --install-smoke
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

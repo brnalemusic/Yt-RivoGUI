@@ -32,7 +32,9 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
   - **English (`en_US`)**
 - Location: [`app/i18n.py`](file:///c:/Users/Breno/Documents/Code/Yt-RivoGUI/app/i18n.py) in the `TRANSLATIONS` dictionary.
 - **Key Parity**: Both language dictionaries must retain 100% key parity at all times (every key present in `pt_BR` must exist in `en_US` and vice-versa).
-- Automated tests in `test/test_formats_and_split.py` enforce this key parity—never break this test.
+- **Logs are user-facing too**: `log_update_*` keys cover the updater log lines shown in the log panel; never leave a new log message hard-coded in only one language.
+- Automated tests in `test/test_formats_and_split.py` enforce this key parity—never break this test. `test/test_update_ui.py` verifies the update banner in both languages.
+- The Inno Setup script ([`installer/Yt-RivoGUI.iss`](file:///c:/Users/Breno/Documents/Code/Yt-RivoGUI/installer/Yt-RivoGUI.iss)) has its own bilingual `[Messages]` and `[CustomMessages]` sections; every added installer string must be lowercase and present for both `en` and `pt`.
 
 ---
 
@@ -41,7 +43,7 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
 - The application uses a minimalist, modern monospace design system.
 - **All UI text, button labels, combobox items, placeholders, tooltips, and status messages MUST be in lowercase.**
   - Examples: `iniciar download`, `save to:`, `vídeo`, `audio codec:`, `baixando arquivo...`, `ready to download`.
-  - **Do NOT** use Title Case, PascalCase, or sentence-initial capital letters in user-facing UI text unless referring to proper technical acronyms (e.g., `4k`, `1080p`, `mp4`, `mkv`, `wav`, `pcm`, `ffmpeg`, `v0.0.1.0`).
+  - **Do NOT** use Title Case, PascalCase, or sentence-initial capital letters in user-facing UI text unless referring to proper technical acronyms (e.g., `4k`, `1080p`, `mp4`, `mkv`, `wav`, `pcm`, `ffmpeg`, `v0.0.4.0`).
   - In `app/gui.py`, all dynamically rendered texts should call `.lower()` on translated strings (e.g., `self.i18n('key').lower()`).
 
 ---
@@ -71,13 +73,30 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
 - **`app/gui.py`**:
   - PySide6 desktop interface.
   - Uses `MINIMAL_MONO_STYLESHEET` for consistent dark monospace styling.
-  - Multi-threaded background execution via `MetadataWorker` and `DownloadWorker`.
+  - Multi-threaded background execution via `MetadataWorker`, `DownloadWorker`, `UpdateCheckWorker` and `UpdateDownloadWorker`.
   - Reactive language switching with `apply_translations()`.
+  - Hosts the update banner, clickable version badge, `check for updates automatically` toggle, and the `SingleInstanceGuard` mutex in `run_gui()`.
+- **`app/updater.py`**:
+  - Qt-free update engine used by the GUI, `--check-updates`, `--update-now` and the tests.
+  - Reads the stable GitHub release channel through `latest.json`; older releases fall back to the GitHub API plus `SHA256SUMS.txt`.
+  - Verifies every download by size and SHA-256 before execution; missing checksums are a hard failure.
+  - Installed builds run the downloaded Inno installer silently through a detached PowerShell helper. Portable builds replace their own `.exe` with backup/rollback and relaunch. Source checkouts never self-update.
+  - Persists `UpdateSettings` in `%LOCALAPPDATA%\Yt-RivoGUI\settings.json` and update logs in `updater.log`.
 - **`app/i18n.py`**:
   - `I18nManager` class and `TRANSLATIONS` mapping.
   - OS-level language detection (`detect_system_language()`).
+- **`installer/`**:
+  - `Yt-RivoGUI.iss` builds the branded per-user Inno Setup installer (`PrivilegesRequired=lowest`, fixed `AppId=Yt-RivoGUI`, uninstall key `Yt-RivoGUI_is1`).
+  - `assets/` holds generated wizard artwork; regenerate it with `devscripts/make_installer_assets.py`.
+- **`devscripts/`**:
+  - `build_gui.py` runs PyInstaller, creates the portable zip, compiles the installer, and writes `latest.json` plus `SHA256SUMS.txt`.
+  - `make_update_manifest.py` and `generate_release_hashes.py` own the release checksum/manifest format.
+  - `test_build.py` verifies the executable, zip, installer, manifest and (with `--install-smoke`) a real silent install/uninstall.
 - **`test/`**:
-  - Automated test suite covering versioning, backend options, media stream processing, and translation parity.
+  - Automated test suite covering versioning, backend options, media stream processing, translation parity, the update engine, and the update UI.
+- **`.github/workflows/`**:
+  - `build.yml` builds and verifies the Windows GUI artifacts and requires Inno Setup 6.7+.
+  - `release.yml` regenerates `latest.json` and `SHA256SUMS.txt` from the merged release artifacts before publishing.
 
 ---
 
@@ -86,10 +105,41 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
 Before finishing any task, run the test suites to ensure zero regressions:
 
 ```powershell
-# 1. Run unit tests
-pytest test/test_formats_and_split.py test/test_gui_versioning.py -v
+# 1. Run unit tests (including the updater and update UI suites)
+pytest test/test_formats_and_split.py test/test_gui_versioning.py test/test_updater.py test/test_update_ui.py -v
 
 # 2. Verify application import and startup check
 python -m app --test-startup
+
+# 3. Verify the live update channel responds (network required)
+python -m app --check-updates
 ```
+
+When changing packaging, installer artwork, the update manifest, or the release workflows, also run:
+
+```powershell
+# 4. Full Windows build, including the branded installer
+python devscripts/build_gui.py --require-installer
+
+# 5. Verify the exe, zip, installer and latest.json
+python devscripts/test_build.py
+
+# 6. Optional but recommended: real silent install/uninstall in a temp folder
+python devscripts/test_build.py --install-smoke
+```
+
+Inno Setup 6.7+ is required for step 4. `build_gui.py` finds `ISCC.exe` on `PATH`, via `INNO_SETUP_COMPILER` / `ISCC`, or in the default installation folders.
+
+---
+
+## 8. Release & Update Invariants
+
+- **Distribution model**: keep the branded per-user installer (no UAC) and the portable `.exe` / `.zip` side by side. `ffmpeg` and `ffprobe` remain external on `PATH`; never bundle them.
+- **Release tags**: stable releases use the plain four-part version (`0.0.4.0`, no `v` prefix). `latest.json` asset URLs and the updater are generated from that tag.
+- **Release assets**: `Yt-RivoGUI-Setup-v<version>.exe`, `Yt-RivoGUI.exe`, `Yt-RivoGUI-v<version>-windows.zip`, `SHA256SUMS.txt`, `latest.json`.
+- **Checksum policy**: `SHA256SUMS.txt` excludes `latest.json` and itself. `latest.json` carries the checksum of `SHA256SUMS.txt` plus the size and SHA-256 of every installable asset. Never weaken the rule that an asset without a valid checksum must not be executed.
+- **Installed vs portable**: installed builds update by running the downloaded installer silently; portable builds replace their own executable through the PowerShell helper. Source checkouts must never self-update.
+- **Identity**: do not change `AppId=Yt-RivoGUI` or the uninstall registry key `Software\Microsoft\Windows\CurrentVersion\Uninstall\Yt-RivoGUI_is1`; the updater and the installer rely on them.
+- **Single instance**: the GUI owns the `Yt-RivoGUI.SingleInstance` mutex. The Inno script uses the same `AppMutex`, and the silent updater passes `/CLOSEAPPLICATIONS`. Keep `--allow-multiple` available for development.
+- **Updater logging and errors**: every new update state, error code, or log line must exist in both `pt_BR` and `en_US`, in lowercase, and be covered by `test/test_update_ui.py` or `test/test_updater.py`.
 

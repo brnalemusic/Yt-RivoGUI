@@ -18,6 +18,10 @@ import urllib.request
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from app import __version__ as APP_VERSION  # noqa: E402
 
 # Models to attempt in order (gemini-3.5-flash-lite is primary, supports user override via GEMINI_MODEL)
 DEFAULT_MODELS = [
@@ -272,7 +276,7 @@ def generate_notes(version: str, api_key: str | None = None) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate AI release notes for Yt-RivoGUI")
-    parser.add_argument("-v", "--version", default="0.0.1.0", help="Release version string")
+    parser.add_argument("-v", "--version", default=APP_VERSION, help="Release version string")
     parser.add_argument("-o", "--output", default="RELEASE_NOTES", help="Path to write the release notes file")
     args = parser.parse_args()
 
