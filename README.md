@@ -263,9 +263,11 @@ releases are automated via github actions (`.github/workflows/release.yml` and `
    ```
 2. tag and push. stable tags use the plain four-part version, without a `v` prefix, because the update manifest and asset urls are generated from the tag:
    ```bash
+   git push origin master
    git tag 0.0.4.0
-   git push origin master --tags
+   git push origin 0.0.4.0
    ```
+   pushing the tag is what triggers `.github/workflows/release.yml` (`on: push: tags`). the filter only accepts four-part numeric tags (`0.0.4.0`, optionally `v0.0.4.0`), and the workflow aborts when the tag does not match `__version__` in `app/__init__.py` — so always run step 1 first and re-tag if the version check fails. if the tag does not start a run (for example the tag already existed), run the `Release` workflow manually from the actions tab with `version` and `target` set to the tag; that is the supported fallback.
 3. github actions builds `Yt-RivoGUI.exe`, the portable zip and the branded installer, computes sha-256 checksums, regenerates `latest.json` from the merged artifacts, and publishes everything to a new github release.
 
 release assets:

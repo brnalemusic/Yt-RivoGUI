@@ -1,9 +1,11 @@
 name: Release
 on:
   push:
+    # Stable tags are the plain four-part version (0.0.4.0).
+    # Keep this filter to plain '*' wildcards: '?', '+' and '{}' are fragile for tag filters.
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+.[0-9]+'
-      - 'v*'
+      - '[0-9]*.[0-9]*.[0-9]*.[0-9]*'
+      - 'v[0-9]*.[0-9]*.[0-9]*.[0-9]*'
 
   workflow_call:
 
@@ -102,6 +104,30 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: '3.14'  # Keep this in sync with test-workflows.yml
+
+      - name: Verify tag matches application version
+        if: github.event_name == 'push'
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import sys
+
+          with open('app/__init__.py', encoding='utf-8') as f:
+              match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', f.read())
+          version = (match.group(1).strip().lstrip('vV') if match else '')
+          tag = os.environ['REF_NAME'].strip().lstrip('vV')
+          if not version:
+              sys.exit('::error::could not read __version__ from app/__init__.py')
+          if tag != version:
+              sys.exit(
+                  f'::error::tag {os.environ["REF_NAME"]} does not match the application version '
+                  f'{version}; update app/__init__.py (python devscripts/update-version.py {tag}) '
+                  'and re-tag before releasing')
+          print(f'tag {tag} matches the application version')
+          PY
 
       - name: Process inputs
         id: process_inputs

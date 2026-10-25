@@ -21,7 +21,7 @@ def setup_variables(environment):
         SOURCE_ARCHIVE_REPO, TARGET_ARCHIVE_REPO,
         HAS_ARCHIVE_REPO_TOKEN, HAS_RELEASE_KEY
 
-    `INPUTS` must contain these keys:
+    `INPUTS` may contain these keys (all optional for tag pushes):
         prerelease
 
     `PROCESSED` must contain these keys:
@@ -89,7 +89,8 @@ def setup_variables(environment):
     if target_repo != REPOSITORY and not json.loads(environment['HAS_ARCHIVE_REPO_TOKEN']):
         return None
 
-    if target_repo == REPOSITORY and not INPUTS['prerelease']:
+    # `inputs` is empty for tag pushes (`on: push`), so prerelease must be optional.
+    if target_repo == REPOSITORY and not INPUTS.get('prerelease'):
         pypi_project = environment['PYPI_PROJECT'] or None
 
     return {
