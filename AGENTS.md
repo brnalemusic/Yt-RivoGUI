@@ -1,5 +1,8 @@
 # Instructions for AI Agents & Assistants (AGENTS.md)
 
+FIRST OF ALL:
+If you are an AI agent about to make changes to the code, DO NOT MODIFY the rules in this `AGENTS.md` file. You are only permitted to edit section no. 6, provided it is relevant to your pre-coding context. You may modify the entire file—changing or removing existing rules—only when the user explicitly instructs you to alter the rules within this file. Never do so on your own initiative.
+
 This repository contains **Yt-RivoGUI**, a minimalist, dark-themed desktop media downloader built with Python, PySide6 (Qt for Python), FFmpeg, and yt-dlp technology.
 
 Any AI assistant or autonomous agent working on this codebase **must strictly comply** with the following rules:

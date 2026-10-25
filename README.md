@@ -21,7 +21,7 @@
 
 ## overview
 
-`yt-rivogui` is a standalone desktop media downloader embodying a full graphical edition of `yt-dlp` with the engine built directly into the application (no external `yt-dlp` installation or command-line setup required). designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features a retro-minimalist dark slate interface, monospaced typography, segmented card navigation, and complete lowercase interface styling, delivering full control over downloads while keeping the interface distraction-free, elegant, and lightweight.
+`yt-rivogui` is a standalone desktop media downloader embodying a full graphical edition of `yt-dlp` with the engine built directly into the application (no external `yt-dlp` installation or command-line setup required). designed exclusively for microsoft windows (windows 10 / 11 64-bit), it features a retro-minimalist dark slate interface, monospaced typography, and complete lowercase interface styling. downloads run through a compact guided flow: paste a link, review the smart defaults collapsed into summary accordions, download with one click, and expand any section only when you want full control.
 
 ---
 
@@ -29,18 +29,20 @@
 
 - **retro-minimalist dark design**: clean dark slate palette (`#0d1117`) with elevated card panels (`#161b22`), subtle borders (`#21262d`), and emerald green accents (`#238636`, `#34d399`).
 - **100% lowercase & monospaced typography**: uniform lowercase visual aesthetic across all buttons, labels, and badges, paired with clean technical monospace fonts (`cascadia code`, `jetbrains mono`, `consolas`).
-- **structured 3-zone card navigation**:
-  - **source & destination**: glowing url bar with one-click paste/clear buttons and folder destination picker.
-  - **detected media card**: centered preview with high-definition 16:9 thumbnail and metadata chips (channel, duration, playlist info).
-  - **mode & settings deck**: segmented radio pills to switch between `vídeo`, `áudio`, `vídeo + áudio (separados)`, and `capa` (thumbnail only).
+- **guided three-phase download flow** (smart defaults first, complexity on demand):
+  - **home**: a single hero screen with one big paste button and one url text box — plus a discreet `salvar em:` footer. a link already sitting on the clipboard is detected and prefilled automatically at startup, and media links can also be dragged onto the window.
+  - **settings**: the detected media preview (thumbnail, title, channel, duration, playlist badge), a thin `1 link · 2 ajustes · 3 download` stepper, segmented mode pills (`vídeo`, `áudio`, `vídeo + áudio (separados)`, `capa`), and collapsible accordion sections — `qualidade`, `codec áudio`, `playlist`, `extras` — each showing its current value as a summary (`melhor · mp4`, `mp3 · 320 kbps`, ...). everything starts collapsed: the `baixar agora` button applies the best defaults with zero extra steps.
+  - **progress**: large progress bar with the 4-column telemetry grid (progress %, speed, eta, file size), cancel/openFolder actions, and `abrir arquivo` + `baixar outro` once finished; output stays forgiving when preview metadata cannot be fetched (the direct download still works).
+- **hamburger drawer (⚙ preferences sidebar)**: sliding overlay sidebar with downloads actions (`novo download`, `abrir pasta de downloads`), preferences (`salvar em:`, live language switcher, automatic update checks) and system entries (manual update check, activity logs), animating in 190 ms and closing with `esc`, the hamburger, or a click outside.
+- **keyboard & clipboard**: `enter` on the url field skips the debounce and fetches metadata immediately; `esc` closes the drawer (or returns from settings to home).
 - **flexible media presets & codecs**:
-  - **video**: `best`, `4k (2160p)`, `1440p`, `1080p`, `720p`, `480p`, `360p` (`mp4`, `mkv`, `webm`).
-  - **audio**: `mp3`, `flac`, `m4a`, `wav`, `opus`, `aac`, `vorbis` with selectable quality bitrates (`best`, `320k`, `256k`, `192k`, `128k`).
-  - **split download**: simultaneously extract high-definition video and separate audio track.
+  - **video**: `best`, `4k (2160p)`, `1440p`, `1080p`, `720p`, `480p`, `360p` into `mp4` or `mkv` containers.
+  - **audio**: `mp3`, `m4a`, `flac`, `wav`, `opus` with selectable quality bitrates (`best`, `320k`, `256k`, `192k`, `128k`; `wav` is lossless `pcm`).
+  - **split download**: simultaneously extract high-definition video and separate audio track (with an optional `vídeo sem áudio` output).
 - **bilingual auto-detection**: automatically adapts to your system language:
   - brazilian portuguese (`pt_BR`) on portuguese environments.
   - american english (`en_US`) on all other system locales.
-  - real-time live language switcher directly in the interface header.
+  - real-time live language switcher inside the hamburger drawer.
 - **branded windows installer**: per-user installation with no uac prompt, custom dark emerald artwork, start menu integration and a clean uninstaller.
 - **automatic media tool provisioning**: the installer downloads the official ffmpeg essentials build for windows (about 34 mb) when `ffmpeg` and `ffprobe` are missing, verifies its sha-256 and installs both into the app's `bin` folder.
 - **verified automatic updates**: stable-channel update checks with sha-256 verification, a one-click update banner, and safe installed/portable update paths.
@@ -80,7 +82,7 @@ upstream-only command-line features (the self-updater, shell completions, and co
 
 ### option a: windows installer (recommended for end users)
 
-1. download `Yt-RivoGUI-Setup-v0.0.4.0.exe` from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
+1. download `Yt-RivoGUI-Setup-v0.0.4.1.exe` from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. run the installer. it installs per user into `%LOCALAPPDATA%\Programs\Yt-RivoGUI` and does **not** require administrator rights (no uac prompt).
 3. when `ffmpeg` and `ffprobe` are not already installed, setup downloads the official [ffmpeg essentials build](https://www.gyan.dev/ffmpeg/builds/) (about 34 mb), verifies its sha-256 digest and installs both tools into the app's `bin` folder. the download is skipped when both tools are already available, and setup continues normally when it fails (for example while offline).
 4. launch `yt-rivogui` from the start menu. setup also offers an optional desktop shortcut.

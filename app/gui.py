@@ -9,13 +9,18 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 
 try:
-    from PySide6.QtCore import Qt, QThread, Signal, Slot, QTimer, QUrl
-    from PySide6.QtGui import QIcon, QPixmap, QImage, QDesktopServices, QFont
+    from PySide6.QtCore import (
+        Qt, QThread, Signal, Slot, QTimer, QUrl, QPoint,
+        QPropertyAnimation, QEasingCurve,
+    )
+    from PySide6.QtGui import (
+        QIcon, QPixmap, QImage, QDesktopServices, QColor, QFontMetrics,
+    )
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
         QLabel, QLineEdit, QPushButton, QTextEdit, QFileDialog, QComboBox,
         QCheckBox, QProgressBar, QFrame, QScrollArea, QButtonGroup, QRadioButton,
-        QMessageBox
+        QMessageBox, QStackedWidget, QGraphicsDropShadowEffect,
     )
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError('PySide6 is required for the GUI runtime. Install it with: pip install PySide6') from exc
@@ -23,6 +28,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 from app import __version__
 from app.backend import YtDLBackend, DownloadOptions, ProgressInfo, get_default_download_dir, clean_ansi
 from app.i18n import I18nManager
+from app.styles import MINIMAL_MONO_STYLESHEET  # noqa: F401  (re-exported for compatibility)
 from app.updater import (
     RELEASES_URL,
     CheckResult,
@@ -40,6 +46,13 @@ from app.updater import (
 
 logger = logging.getLogger(__name__)
 
+# Guided-flow phases rendered inside the main stack.
+PHASE_HOME = 0       # hero: paste a link
+PHASE_CONFIGURE = 1  # detected media + accordion settings
+PHASE_PROGRESS = 2   # download progress & logs
+
+_QWIDGETSIZE_MAX = 16777215
+
 
 def get_logo_path() -> Path | None:
     """Finds the official Yt-RivoGUI-Logo.png across standard project locations."""
@@ -52,6 +65,127 @@ def get_logo_path() -> Path | None:
         if p.exists():
             return p
     return None
+
+
+def _repolish(widget: QWidget) -> None:
+    """Forces a Qt stylesheet re-evaluation after an objectName/property change."""
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+
+
+class _SectionHead(QFrame):
+    """Clickable accordion header that emits ``clicked`` on left-click release."""
+
+    clicked = Signal()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        event.accept()
+
+
+class _DrawerOverlay(QFrame):
+    """Full-window translucent surface behind the drawer; clicking it closes the drawer."""
+
+    clicked = Signal()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        self.clicked.emit()
+        event.accept()
+
+
+class CollapsibleSection(QFrame):
+    """Accordion section: a clickable summary header that expands a settings area.
+
+    The header always shows the current value of the section (the "summary"),
+    so the interface stays compact when the smart defaults are enough and only
+    expands when the user wants to customize something.
+    """
+
+    def __init__(self, title: str, summary: str = '', parent=None):
+        super().__init__(parent)
+        self.setObjectName('SectionCard')
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.header = _SectionHead()
+        self.header.setObjectName('SectionHead')
+        self.header.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.header.clicked.connect(self.toggle)
+        header_layout = QHBoxLayout(self.header)
+        header_layout.setContentsMargins(12, 9, 12, 9)
+        header_layout.setSpacing(8)
+
+        self.arrow_label = QLabel('▸')
+        self.arrow_label.setObjectName('SectionArrow')
+        self.title_label = QLabel(title)
+        self.title_label.setObjectName('SectionName')
+        self.summary_label = QLabel(summary)
+        self.summary_label.setObjectName('SectionValue')
+
+        for lbl in (self.arrow_label, self.title_label, self.summary_label):
+            lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        header_layout.addWidget(self.arrow_label)
+        header_layout.addWidget(self.title_label)
+        header_layout.addStretch(1)
+        header_layout.addWidget(self.summary_label)
+        outer.addWidget(self.header)
+
+        self.content = QWidget()
+        self.content.setObjectName('SectionContent')
+        self.content_layout = QVBoxLayout(self.content)
+        self.content_layout.setContentsMargins(14, 2, 14, 12)
+        self.content_layout.setSpacing(8)
+        self.content.setMaximumHeight(0)
+        self.content.setVisible(False)
+        outer.addWidget(self.content)
+
+        self._expanded = False
+        self._animation = QPropertyAnimation(self.content, b'maximumHeight', self)
+        self._animation.setDuration(170)
+        self._animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._animation.finished.connect(self._on_animation_finished)
+
+    def toggle(self) -> None:
+        self.set_expanded(not self._expanded)
+
+    def set_expanded(self, expand: bool) -> None:
+        if expand == self._expanded:
+            return
+        self._expanded = expand
+        self.arrow_label.setText('▾' if expand else '▸')
+        self._animation.stop()
+        if expand:
+            self.content.setVisible(True)
+            self._animation.setStartValue(0)
+            self._animation.setEndValue(self._content_height())
+        else:
+            self._animation.setStartValue(self.content.height())
+            self._animation.setEndValue(0)
+        self._animation.start()
+
+    def is_expanded(self) -> bool:
+        return self._expanded
+
+    def set_title(self, title: str) -> None:
+        self.title_label.setText(title)
+
+    def set_summary(self, summary: str) -> None:
+        self.summary_label.setText(summary)
+
+    def _content_height(self) -> int:
+        margins = self.content_layout.contentsMargins()
+        return self.content_layout.sizeHint().height() + margins.top() + margins.bottom()
+
+    def _on_animation_finished(self) -> None:
+        if self._expanded:
+            self.content.setMaximumHeight(_QWIDGETSIZE_MAX)
+        else:
+            self.content.setVisible(False)
 
 
 class MetadataWorker(QThread):
@@ -179,371 +313,6 @@ class UpdateDownloadWorker(QThread):
         self.downloaded.emit(str(path))
 
 
-MINIMAL_MONO_STYLESHEET = """
-* {
-    font-family: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 12px;
-}
-
-QMainWindow, QWidget#CentralWidget, QWidget#ScrollContent, QScrollArea, QScrollArea > QWidget > QWidget {
-    background-color: #0d1117;
-}
-
-QScrollArea {
-    background-color: #0d1117;
-    border: none;
-}
-QScrollBar:vertical {
-    background-color: #0d1117;
-    width: 6px;
-    border-radius: 3px;
-    margin: 0px;
-}
-QScrollBar::handle:vertical {
-    background-color: #21262d;
-    min-height: 24px;
-    border-radius: 3px;
-}
-QScrollBar::handle:vertical:hover {
-    background-color: #34d399;
-}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0px;
-}
-
-/* CARDS */
-QFrame.Card {
-    background-color: #161b22;
-    border: 1px solid #21262d;
-    border-radius: 8px;
-}
-QFrame.Card:hover {
-    border-color: #30363d;
-}
-
-/* NESTED / INNER BOXES */
-QFrame.InnerBox {
-    background-color: #0d1117;
-    border: 1px solid #21262d;
-    border-radius: 6px;
-}
-
-/* INPUTS */
-QLineEdit {
-    background-color: #0d1117;
-    color: #f0f6fc;
-    border: 1px solid #21262d;
-    border-radius: 6px;
-    padding: 7px 12px;
-    selection-background-color: #238636;
-    selection-color: #ffffff;
-}
-QLineEdit:focus {
-    border: 1px solid #238636;
-    background-color: #0f141c;
-}
-QLineEdit#UrlInput {
-    background-color: #0d1117;
-    color: #f0f6fc;
-    border: 1px solid #238636;
-    border-radius: 8px;
-    padding: 8px 12px;
-}
-QLineEdit#UrlInput:focus {
-    border: 1px solid #34d399;
-    background-color: #0f141c;
-}
-
-/* COMBOBOX */
-QComboBox {
-    background-color: #0d1117;
-    color: #f0f6fc;
-    border: 1px solid #21262d;
-    border-radius: 6px;
-    padding: 5px 10px;
-    min-height: 20px;
-}
-QComboBox:hover {
-    border-color: #30363d;
-}
-QComboBox:focus {
-    border-color: #238636;
-}
-QComboBox::drop-down {
-    subcontrol-origin: padding;
-    subcontrol-position: top right;
-    width: 20px;
-    border-left-width: 0px;
-}
-QComboBox QAbstractItemView {
-    background-color: #161b22;
-    color: #f0f6fc;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    padding: 4px;
-    selection-background-color: #238636;
-    selection-color: #ffffff;
-}
-QComboBox#LangCombo {
-    background-color: #161b22;
-    color: #c9d1d9;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    padding: 3px 12px;
-    font-size: 11px;
-}
-QComboBox#LangCombo:hover {
-    border-color: #34d399;
-}
-
-/* BUTTONS */
-QPushButton {
-    background-color: #21262d;
-    color: #c9d1d9;
-    border: 1px solid #30363d;
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-weight: 500;
-}
-QPushButton:hover {
-    background-color: #30363d;
-    border-color: #484f58;
-    color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #161b22;
-}
-QPushButton:disabled {
-    background-color: #161b22;
-    color: #484f58;
-    border-color: #21262d;
-}
-
-/* PRIMARY BUTTON (MINT / EMERALD ACCENT) */
-QPushButton#PrimaryButton {
-    background-color: #238636;
-    color: #040906;
-    border: 1px solid #34d399;
-    border-radius: 6px;
-    padding: 7px 22px;
-    font-weight: 700;
-}
-QPushButton#PrimaryButton:hover {
-    background-color: #2ea043;
-    border-color: #3fb950;
-    color: #ffffff;
-}
-QPushButton#PrimaryButton:pressed {
-    background-color: #19692c;
-    color: #ffffff;
-}
-QPushButton#PrimaryButton:disabled {
-    background-color: #13251a;
-    border-color: #1a3c26;
-    color: #234b32;
-}
-
-/* CANCEL BUTTON */
-QPushButton#CancelButton {
-    background-color: #251216;
-    color: #f85149;
-    border: 1px solid #4a1d24;
-    border-radius: 6px;
-    padding: 7px 18px;
-}
-QPushButton#CancelButton:hover {
-    background-color: #2f171c;
-    border-color: #da3633;
-    color: #ffffff;
-}
-
-/* SEGMENTED TAB RADIO BUTTONS */
-QRadioButton {
-    color: #8b949e;
-    spacing: 6px;
-    padding: 6px 14px;
-    background-color: #0d1117;
-    border: 1px solid #21262d;
-    border-radius: 6px;
-    font-weight: 500;
-}
-QRadioButton:hover {
-    color: #f0f6fc;
-    border-color: #30363d;
-    background-color: #161b22;
-}
-QRadioButton:checked {
-    color: #34d399;
-    background-color: #0e2a1d;
-    border: 1px solid #238636;
-    font-weight: 600;
-}
-QRadioButton::indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 4px;
-    border: 1px solid #30363d;
-    background-color: #0d1117;
-}
-QRadioButton::indicator:checked {
-    border-color: #34d399;
-    background-color: #34d399;
-}
-
-/* CHECKBOX */
-QCheckBox {
-    color: #c9d1d9;
-    spacing: 8px;
-}
-QCheckBox:hover {
-    color: #f0f6fc;
-}
-QCheckBox::indicator {
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
-    border: 1px solid #30363d;
-    background-color: #0d1117;
-}
-QCheckBox::indicator:hover {
-    border-color: #34d399;
-}
-QCheckBox::indicator:checked {
-    border-color: #34d399;
-    background-color: #238636;
-}
-
-/* PROGRESS BAR */
-QProgressBar {
-    background-color: #0d1117;
-    border: 1px solid #21262d;
-    border-radius: 3px;
-    height: 6px;
-    text-align: center;
-    color: transparent;
-}
-QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #238636, stop:1 #34d399);
-    border-radius: 2px;
-}
-
-/* METRICS */
-QFrame.MetricBox {
-    background-color: transparent;
-    border: none;
-    border-right: 1px solid #21262d;
-    padding-right: 12px;
-}
-QFrame.MetricBoxLast {
-    background-color: transparent;
-    border: none;
-}
-
-/* LOG VIEW */
-QTextEdit#LogView {
-    background-color: #07090c;
-    color: #34d399;
-    border: 1px solid #21262d;
-    border-radius: 6px;
-    padding: 10px;
-    font-size: 11px;
-    line-height: 1.45;
-}
-
-/* LABELS & TYPOGRAPHY */
-QLabel {
-    color: #c9d1d9;
-}
-QLabel#AppTitle {
-    color: #ffffff;
-    font-size: 16px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-}
-QLabel#AppSubtitle {
-    color: #34d399;
-    font-size: 11px;
-}
-QLabel#SecondaryText {
-    color: #8b949e;
-    font-size: 11px;
-}
-QLabel#SectionHeader {
-    color: #34d399;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-}
-QLabel#MetricValue {
-    color: #f0f6fc;
-    font-size: 13px;
-    font-weight: 600;
-}
-QLabel#MetricLabel {
-    color: #8b949e;
-    font-size: 10px;
-}
-QPushButton#VersionBadge {
-    background-color: #0e2a1d;
-    color: #34d399;
-    border: 1px solid #238636;
-    border-radius: 4px;
-    padding: 2px 7px;
-    font-size: 10px;
-    font-weight: 600;
-}
-QPushButton#VersionBadge:hover {
-    background-color: #123d29;
-    border-color: #34d399;
-    color: #ffffff;
-}
-QPushButton#VersionBadge:pressed {
-    background-color: #0b2016;
-}
-QPushButton#VersionBadge:disabled {
-    color: #2f6b4c;
-    border-color: #1a3c26;
-}
-
-/* UPDATE BANNER */
-QFrame#UpdateBanner {
-    background-color: #0e2a1d;
-    border: 1px solid #238636;
-    border-radius: 8px;
-}
-QLabel#UpdateTitle {
-    color: #f0f6fc;
-    font-size: 13px;
-    font-weight: 700;
-}
-QLabel#UpdateDetail {
-    color: #8b949e;
-    font-size: 11px;
-}
-QPushButton#UpdateGhost {
-    background-color: transparent;
-    color: #8b949e;
-    border: 1px solid #30363d;
-    border-radius: 5px;
-    padding: 4px 10px;
-    font-size: 11px;
-}
-QPushButton#UpdateGhost:hover {
-    color: #ffffff;
-    border-color: #34d399;
-    background-color: #12301f;
-}
-QProgressBar#UpdateProgress {
-    background-color: #07120c;
-    border: 1px solid #1a3c26;
-    border-radius: 3px;
-    height: 6px;
-    text-align: center;
-    color: transparent;
-}
-"""
-
-
 class MainWindow(QMainWindow):
     def __init__(self, *, allow_update_check: bool = True) -> None:
         super().__init__()
@@ -552,8 +321,8 @@ class MainWindow(QMainWindow):
 
         # Window configuration
         self.setWindowTitle(self.i18n('app_title'))
-        self.resize(980, 750)
-        self.setMinimumSize(850, 620)
+        self.resize(940, 700)
+        self.setMinimumSize(840, 620)
 
         # Set taskbar and window icon
         if self.logo_path and self.logo_path.exists():
@@ -570,6 +339,8 @@ class MainWindow(QMainWindow):
         self.debounce_timer.timeout.connect(self._fetch_metadata)
         self.last_fetched_url = ''
         self.last_downloaded_file = ''
+        self._phase = PHASE_HOME
+        self._playlist_count = 0
 
         # Update state
         self._allow_update_check = allow_update_check
@@ -585,9 +356,16 @@ class MainWindow(QMainWindow):
         self._update_progress_value = 0
         self._update_progress_text = ''
 
+        self.setAcceptDrops(True)
         self._build_ui()
         self.setStyleSheet(MINIMAL_MONO_STYLESHEET)
+        self._set_phase(PHASE_HOME)
         self.apply_translations()
+
+        # Convenience: when the app opens, a media link already sitting on the
+        # clipboard is detected and prefilled. Guarded so it never runs while
+        # the window is hidden (e.g. during offscreen tests).
+        QTimer.singleShot(500, self._prefill_from_clipboard)
 
         self.auto_update_timer = QTimer(self)
         self.auto_update_timer.setInterval(12 * 60 * 60 * 1000)
@@ -596,42 +374,51 @@ class MainWindow(QMainWindow):
             self.auto_update_timer.start()
             QTimer.singleShot(2500, self._maybe_auto_update_check)
 
+    # ------------------------------------------------------------------
+    # ui construction
+    # ------------------------------------------------------------------
     def _build_ui(self) -> None:
         central_widget = QWidget(self)
         central_widget.setObjectName('CentralWidget')
         self.setCentralWidget(central_widget)
 
         root_layout = QVBoxLayout(central_widget)
-        root_layout.setContentsMargins(18, 14, 18, 14)
-        root_layout.setSpacing(10)
+        root_layout.setContentsMargins(14, 10, 14, 12)
+        root_layout.setSpacing(8)
 
-        # 1. HEADER BAR
+        self._build_header(root_layout)
+        self._build_update_banner(root_layout)
+        self._build_stepper(root_layout)
+        self._build_stack(root_layout)
+        self._build_drawer()
+        self._update_controls_visibility()
+
+    def _build_header(self, root_layout: QVBoxLayout) -> None:
         header_card = QFrame()
         header_layout = QHBoxLayout(header_card)
-        header_layout.setContentsMargins(0, 0, 0, 4)
-        header_layout.setSpacing(12)
+        header_layout.setContentsMargins(0, 0, 0, 2)
+        header_layout.setSpacing(10)
 
-        header_layout.addStretch(1)
+        # Hamburger that opens the preferences/actions drawer
+        self.btn_menu = QPushButton('☰')
+        self.btn_menu.setObjectName('MenuButton')
+        self.btn_menu.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_menu.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_menu.clicked.connect(self._toggle_drawer)
+        header_layout.addWidget(self.btn_menu)
 
-        # Center Brand Stack
-        brand_box = QHBoxLayout()
-        brand_box.setSpacing(10)
-
-        # Logo image
+        # Brand block
         self.logo_label = QLabel()
         if self.logo_path and self.logo_path.exists():
             pix = QPixmap(str(self.logo_path)).scaled(
-                34, 34, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                28, 28, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
             self.logo_label.setPixmap(pix)
         else:
             self.logo_label.setText('▶')
-            self.logo_label.setStyleSheet('font-size: 20px; color: #34d399;')
-        brand_box.addWidget(self.logo_label)
+            self.logo_label.setStyleSheet('font-size: 18px; color: #34d399;')
+        header_layout.addWidget(self.logo_label)
 
-        # App Title and Subtitle
-        title_box = QVBoxLayout()
-        title_box.setSpacing(1)
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
         self.app_title_label = QLabel(self.i18n('app_title').lower())
@@ -645,35 +432,12 @@ class MainWindow(QMainWindow):
         self.version_badge.clicked.connect(self._manual_update_check)
         title_row.addWidget(self.version_badge)
         title_row.addStretch()
-        title_box.addLayout(title_row)
+        header_layout.addLayout(title_row)
 
-        self.app_subtitle_label = QLabel(self.i18n('app_subtitle').lower())
-        self.app_subtitle_label.setObjectName('AppSubtitle')
-        title_box.addWidget(self.app_subtitle_label)
-        brand_box.addLayout(title_box)
-
-        header_layout.addLayout(brand_box)
         header_layout.addStretch(1)
-
-        # Language selector in top right
-        lang_box = QHBoxLayout()
-        lang_box.setSpacing(6)
-        self.lang_label = QLabel('')
-        self.lang_label.setVisible(False)
-
-        self.lang_combo = QComboBox()
-        self.lang_combo.setObjectName('LangCombo')
-        self.lang_combo.addItem('🌐 pt-br', 'pt_BR')
-        self.lang_combo.addItem('🌐 en-us', 'en_US')
-        idx = 0 if self.i18n.current_lang == 'pt_BR' else 1
-        self.lang_combo.setCurrentIndex(idx)
-        self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
-        lang_box.addWidget(self.lang_combo)
-        header_layout.addLayout(lang_box)
-
         root_layout.addWidget(header_card)
 
-        # UPDATE BANNER
+    def _build_update_banner(self, root_layout: QVBoxLayout) -> None:
         self.update_banner = QFrame()
         self.update_banner.setObjectName('UpdateBanner')
         update_layout = QVBoxLayout(self.update_banner)
@@ -731,102 +495,157 @@ class MainWindow(QMainWindow):
         self.update_banner.setVisible(False)
         root_layout.addWidget(self.update_banner)
 
-        # SCROLL AREA FOR BODY
+    def _build_stepper(self, root_layout: QVBoxLayout) -> None:
+        """Thin guided-flow indicator: 1 link · 2 ajustes · 3 download."""
+        self.stepper_row = QWidget()
+        row = QHBoxLayout(self.stepper_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
+        self.step_dots: list[QLabel] = []
+        self.step_texts: list[QLabel] = []
+        for index in range(3):
+            dot = QLabel('○')
+            dot.setObjectName('StepDot')
+            text = QLabel('')
+            text.setObjectName('StepText')
+            self.step_dots.append(dot)
+            self.step_texts.append(text)
+            row.addWidget(dot)
+            row.addWidget(text)
+            if index < 2:
+                line = QFrame()
+                line.setObjectName('StepLine')
+                line.setFixedSize(26, 1)
+                row.addWidget(line)
+
+        row.addStretch(1)
+        row.insertStretch(0, 1)
+        self.stepper_row.setVisible(False)
+        root_layout.addWidget(self.stepper_row)
+
+    def _build_stack(self, root_layout: QVBoxLayout) -> None:
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._build_home_page())       # PHASE_HOME
+        self.stack.addWidget(self._build_configure_page())  # PHASE_CONFIGURE
+        self.stack.addWidget(self._build_progress_page())   # PHASE_PROGRESS
+        root_layout.addWidget(self.stack, 1)
+
+    def _build_home_page(self) -> QWidget:
+        page = QWidget()
+        page.setObjectName('PageHome')
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(28, 20, 28, 16)
+        layout.setSpacing(10)
+
+        layout.addStretch(2)
+
+        # Hero brand block
+        hero_box = QVBoxLayout()
+        hero_box.setSpacing(4)
+        hero_logo = QLabel()
+        hero_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if self.logo_path and self.logo_path.exists():
+            hero_logo.setPixmap(QPixmap(str(self.logo_path)).scaled(
+                48, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            ))
+        else:
+            hero_logo.setText('▶')
+            hero_logo.setStyleSheet('font-size: 26px; color: #34d399;')
+        hero_box.addWidget(hero_logo)
+
+        self.hero_title_label = QLabel('')
+        self.hero_title_label.setObjectName('HeroTitle')
+        self.hero_title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_box.addWidget(self.hero_title_label)
+
+        self.app_subtitle_label = QLabel('')
+        self.app_subtitle_label.setObjectName('AppSubtitle')
+        self.app_subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hero_box.addWidget(self.app_subtitle_label)
+        layout.addLayout(hero_box)
+
+        layout.addSpacing(14)
+
+        # One big paste button + one text box: the entire home screen.
+        url_row = QHBoxLayout()
+        url_row.setSpacing(8)
+
+        self.url_input = QLineEdit()
+        self.url_input.setObjectName('UrlInput')
+        self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
+        self.url_input.setClearButtonEnabled(True)
+        self.url_input.textChanged.connect(self._on_url_text_changed)
+        self.url_input.returnPressed.connect(self._fetch_metadata_now)
+        url_row.addWidget(self.url_input, 1)
+
+        self.btn_paste = QPushButton(self.i18n('paste_button').lower())
+        self.btn_paste.setObjectName('PrimaryButton')
+        self.btn_paste.setProperty('big', True)
+        self.btn_paste.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_paste.clicked.connect(self._paste_clipboard)
+        url_row.addWidget(self.btn_paste)
+        layout.addLayout(url_row)
+
+        self.hero_hint_label = QLabel('')
+        self.hero_hint_label.setObjectName('HeroHint')
+        self.hero_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.hero_hint_label)
+
+        layout.addStretch(3)
+
+        # Discrete destination footer
+        footer_row = QHBoxLayout()
+        footer_row.addStretch(1)
+        self.btn_save_to = QPushButton('')
+        self.btn_save_to.setObjectName('SaveToButton')
+        self.btn_save_to.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_save_to.clicked.connect(self._choose_output_dir)
+        footer_row.addWidget(self.btn_save_to)
+        footer_row.addStretch(1)
+        layout.addLayout(footer_row)
+
+        return page
+
+    def _build_configure_page(self) -> QWidget:
+        page = QWidget()
+        page.setObjectName('PageConfigure')
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_content = QWidget()
         scroll_content.setObjectName('ScrollContent')
-        body_layout = QVBoxLayout(scroll_content)
-        body_layout.setContentsMargins(0, 0, 4, 0)
-        body_layout.setSpacing(10)
+        body = QVBoxLayout(scroll_content)
+        body.setContentsMargins(14, 10, 14, 10)
+        body.setSpacing(8)
 
-        # 2. SOURCE & DESTINATION CARD
-        url_card = QFrame()
-        url_card.setProperty('class', 'Card')
-        url_layout = QVBoxLayout(url_card)
-        url_layout.setContentsMargins(14, 12, 14, 12)
-        url_layout.setSpacing(8)
+        # --- media preview card (compact horizontal header) ---
+        preview_card = QFrame()
+        preview_card.setProperty('class', 'Card')
+        preview_layout = QHBoxLayout(preview_card)
+        preview_layout.setContentsMargins(12, 10, 12, 10)
+        preview_layout.setSpacing(12)
 
-        self.section_source_label = QLabel(self.i18n('section_source').lower())
-        self.section_source_label.setObjectName('SectionHeader')
-        url_layout.addWidget(self.section_source_label)
-
-        # URL row
-        url_input_row = QHBoxLayout()
-        url_input_row.setSpacing(8)
-
-        self.url_input = QLineEdit()
-        self.url_input.setObjectName('UrlInput')
-        self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
-        self.url_input.textChanged.connect(self._on_url_text_changed)
-        url_input_row.addWidget(self.url_input)
-
-        self.btn_paste = QPushButton(self.i18n('paste_button').lower())
-        self.btn_paste.clicked.connect(self._paste_clipboard)
-        url_input_row.addWidget(self.btn_paste)
-
-        self.btn_clear = QPushButton(self.i18n('clear_button').lower())
-        self.btn_clear.clicked.connect(self._clear_url)
-        url_input_row.addWidget(self.btn_clear)
-        url_layout.addLayout(url_input_row)
-
-        # Destination Folder row
-        dest_row = QHBoxLayout()
-        dest_row.setSpacing(8)
-
-        self.dest_label = QLabel(self.i18n('destination_folder').lower())
-        self.dest_label.setObjectName('SecondaryText')
-        dest_row.addWidget(self.dest_label)
-
-        self.dest_path_input = QLineEdit(self.output_dir)
-        self.dest_path_input.setReadOnly(True)
-        dest_row.addWidget(self.dest_path_input)
-
-        self.btn_browse = QPushButton(f"🔍 {self.i18n('browse_folder').lower()}")
-        self.btn_browse.clicked.connect(self._choose_output_dir)
-        dest_row.addWidget(self.btn_browse)
-
-        self.btn_open_folder = QPushButton(f"📁 {self.i18n('open_folder').lower()}")
-        self.btn_open_folder.clicked.connect(self._open_output_dir)
-        dest_row.addWidget(self.btn_open_folder)
-
-        url_layout.addLayout(dest_row)
-        body_layout.addWidget(url_card)
-
-        # 3. MEDIA PREVIEW CARD
-        self.preview_card = QFrame()
-        self.preview_card.setProperty('class', 'Card')
-        preview_layout = QVBoxLayout(self.preview_card)
-        preview_layout.setContentsMargins(14, 12, 14, 12)
-        preview_layout.setSpacing(8)
-
-        self.section_preview_label = QLabel(self.i18n('section_preview').lower())
-        self.section_preview_label.setObjectName('SectionHeader')
-        preview_layout.addWidget(self.section_preview_label)
-
-        preview_center_box = QVBoxLayout()
-        preview_center_box.setSpacing(8)
-
-        self.preview_title = QLabel(self.i18n('preview_empty').lower())
-        self.preview_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_title.setWordWrap(True)
-        self.preview_title.setStyleSheet('font-size: 13px; font-weight: 600; color: #f0f6fc; line-height: 1.3;')
-        preview_center_box.addWidget(self.preview_title)
-
-        # Thumbnail Label
         self.thumb_label = QLabel()
-        self.thumb_label.setFixedSize(160, 90)
+        self.thumb_label.setObjectName('ThumbBox')
+        self.thumb_label.setFixedSize(128, 72)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumb_label.setStyleSheet('background-color: #0d1117; border: 1px solid #21262d; border-radius: 6px; color: #484f58; font-size: 11px;')
         self.thumb_label.setText('preview')
-        preview_center_box.addWidget(self.thumb_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        preview_layout.addWidget(self.thumb_label)
 
-        # Metadata Details Row
+        preview_info = QVBoxLayout()
+        preview_info.setSpacing(3)
+        self.preview_title = QLabel(self.i18n('preview_empty').lower())
+        self.preview_title.setObjectName('PreviewTitle')
+        self.preview_title.setWordWrap(True)
+        preview_info.addWidget(self.preview_title)
+
         meta_info_row = QHBoxLayout()
         meta_info_row.setSpacing(14)
-        meta_info_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         self.preview_channel = QLabel('')
         self.preview_channel.setObjectName('SecondaryText')
         meta_info_row.addWidget(self.preview_channel)
@@ -838,26 +657,19 @@ class MainWindow(QMainWindow):
         self.preview_playlist_badge = QLabel('')
         self.preview_playlist_badge.setStyleSheet('color: #34d399; font-weight: 600;')
         meta_info_row.addWidget(self.preview_playlist_badge)
+        meta_info_row.addStretch(1)
+        preview_info.addLayout(meta_info_row)
+        preview_info.addStretch(1)
 
-        preview_center_box.addLayout(meta_info_row)
-        preview_layout.addLayout(preview_center_box)
-        body_layout.addWidget(self.preview_card)
+        preview_layout.addLayout(preview_info, 1)
+        body.addWidget(preview_card)
 
-        # 4. DOWNLOAD OPTIONS CARD
-        options_card = QFrame()
-        options_card.setProperty('class', 'Card')
-        options_layout = QVBoxLayout(options_card)
-        options_layout.setContentsMargins(14, 12, 14, 12)
-        options_layout.setSpacing(10)
-
-        self.section_options_label = QLabel(self.i18n('section_options').lower())
-        self.section_options_label.setObjectName('SectionHeader')
-        options_layout.addWidget(self.section_options_label)
-
-        # Mode Selection Row (Segmented Radio Tabs)
+        # segmented mode selector (always visible: the primary download decision)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
-        self.mode_group = QButtonGroup(self)
+        mode_row.setContentsMargins(0, 2, 0, 0)
 
         self.radio_video = QRadioButton(self.i18n('mode_video').lower())
         self.radio_video.setChecked(True)
@@ -875,24 +687,17 @@ class MainWindow(QMainWindow):
         self.radio_thumbnail = QRadioButton(self.i18n('mode_thumbnail').lower())
         self.mode_group.addButton(self.radio_thumbnail, 3)
         mode_row.addWidget(self.radio_thumbnail)
-
-        mode_row.addStretch()
-        options_layout.addLayout(mode_row)
+        mode_row.addStretch(1)
+        body.addLayout(mode_row)
         self.mode_group.idToggled.connect(self._on_mode_changed)
 
-        # Settings Container
-        settings_container = QFrame()
-        settings_container.setProperty('class', 'InnerBox')
-        settings_inner_layout = QVBoxLayout(settings_container)
-        settings_inner_layout.setContentsMargins(12, 10, 12, 10)
-        settings_inner_layout.setSpacing(8)
+        # notice for thumbnail mode
+        self.thumb_mode_notice = QLabel(self.i18n('notice_thumbnail_mode').lower())
+        self.thumb_mode_notice.setObjectName('SecondaryText')
+        self.thumb_mode_notice.setVisible(False)
+        body.addWidget(self.thumb_mode_notice)
 
-        # Grid of Format & Quality options
-        self.settings_grid = QGridLayout()
-        self.settings_grid.setHorizontalSpacing(14)
-        self.settings_grid.setVerticalSpacing(8)
-
-        # Video Quality & Format Controls
+        # --- option widgets (created first, assembled into sections after) ---
         self.quality_label = QLabel(self.i18n('quality_label').lower())
         self.quality_label.setObjectName('SecondaryText')
         self.quality_combo = QComboBox()
@@ -910,7 +715,6 @@ class MainWindow(QMainWindow):
         self.format_combo.addItem('mp4', 'mp4')
         self.format_combo.addItem('mkv', 'mkv')
 
-        # Audio Format & Quality Controls
         self.audio_format_label = QLabel(self.i18n('audio_format_label').lower())
         self.audio_format_label.setObjectName('SecondaryText')
         self.audio_format_combo = QComboBox()
@@ -930,89 +734,138 @@ class MainWindow(QMainWindow):
         self.audio_quality_combo.addItem(self.i18n('audio_quality_192').lower(), '192')
         self.audio_quality_combo.addItem(self.i18n('audio_quality_128').lower(), '128')
 
-        # Add to Grid
-        self.settings_grid.addWidget(self.quality_label, 0, 0)
-        self.settings_grid.addWidget(self.quality_combo, 0, 1)
-        self.settings_grid.addWidget(self.format_label, 0, 2)
-        self.settings_grid.addWidget(self.format_combo, 0, 3)
-
-        self.settings_grid.addWidget(self.audio_format_label, 1, 0)
-        self.settings_grid.addWidget(self.audio_format_combo, 1, 1)
-        self.settings_grid.addWidget(self.audio_quality_label, 1, 2)
-        self.settings_grid.addWidget(self.audio_quality_combo, 1, 3)
-
-        settings_inner_layout.addLayout(self.settings_grid)
-
-        # Notice for thumbnail mode
-        self.thumb_mode_notice = QLabel(self.i18n('notice_thumbnail_mode').lower())
-        self.thumb_mode_notice.setObjectName('SecondaryText')
-        self.thumb_mode_notice.setVisible(False)
-        settings_inner_layout.addWidget(self.thumb_mode_notice)
-
-        options_layout.addWidget(settings_container)
-
-        # Checkbox Matrix: Embeds, Subtitles & Options
-        checks_grid = QGridLayout()
-        checks_grid.setHorizontalSpacing(18)
-        checks_grid.setVerticalSpacing(8)
-
         self.chk_embed_thumb = QCheckBox(self.i18n('opt_embed_thumbnail').lower())
         self.chk_embed_thumb.setChecked(True)
-        checks_grid.addWidget(self.chk_embed_thumb, 0, 0)
 
         self.chk_embed_meta = QCheckBox(self.i18n('opt_embed_metadata').lower())
         self.chk_embed_meta.setChecked(True)
-        checks_grid.addWidget(self.chk_embed_meta, 0, 1)
 
-        sub_box = QHBoxLayout()
-        sub_box.setSpacing(8)
         self.chk_subtitles = QCheckBox(self.i18n('opt_subtitles').lower())
         self.chk_subtitles.setChecked(False)
         self.chk_subtitles.toggled.connect(self._on_subtitles_toggled)
-        sub_box.addWidget(self.chk_subtitles)
 
         self.sub_lang_label = QLabel(self.i18n('sub_lang_label').lower())
         self.sub_lang_label.setObjectName('SecondaryText')
-        sub_box.addWidget(self.sub_lang_label)
 
         self.sub_lang_combo = QComboBox()
         self.sub_lang_combo.addItem(self.i18n('sub_lang_pt').lower(), 'pt')
         self.sub_lang_combo.addItem(self.i18n('sub_lang_en').lower(), 'en')
         self.sub_lang_combo.addItem(self.i18n('sub_lang_all').lower(), 'all')
         self.sub_lang_combo.setEnabled(False)
-        sub_box.addWidget(self.sub_lang_combo)
-        sub_box.addStretch()
-        checks_grid.addLayout(sub_box, 1, 0)
 
         self.chk_video_muted = QCheckBox(self.i18n('opt_video_muted').lower())
         self.chk_video_muted.setChecked(False)
         self.chk_video_muted.setVisible(False)
-        checks_grid.addWidget(self.chk_video_muted, 1, 1)
 
-        options_layout.addLayout(checks_grid)
-
-        # Checkbox Row 2: Playlist Option
-        check_row_2 = QVBoxLayout()
-        check_row_2.setSpacing(2)
         self.chk_playlist = QCheckBox(self.i18n('opt_playlist').lower())
         self.chk_playlist.setChecked(False)
-        check_row_2.addWidget(self.chk_playlist)
 
         self.playlist_tip = QLabel(self.i18n('playlist_notice').lower())
-        self.playlist_tip.setStyleSheet('color: #8b949e; font-size: 10px; margin-left: 22px;')
-        check_row_2.addWidget(self.playlist_tip)
-        options_layout.addLayout(check_row_2)
+        self.playlist_tip.setStyleSheet('color: #8b949e; font-size: 10px; margin-left: 8px;')
 
-        body_layout.addWidget(options_card)
+        # --- accordion sections (collapsed by default: smart defaults shown as summary) ---
+        self.section_quality = CollapsibleSection(self.i18n('quality_label').rstrip(':').lower())
+        if self.quality_combo.currentData() != 'best':
+            self.quality_combo.setCurrentIndex(0)
+        quality_grid = QGridLayout()
+        quality_grid.setHorizontalSpacing(14)
+        quality_grid.setVerticalSpacing(8)
+        quality_grid.addWidget(self.quality_label, 0, 0)
+        quality_grid.addWidget(self.quality_combo, 0, 1)
+        quality_grid.addWidget(self.format_label, 0, 2)
+        quality_grid.addWidget(self.format_combo, 0, 3)
+        quality_grid.setColumnStretch(1, 1)
+        quality_grid.setColumnStretch(3, 2)
+        self.section_quality.content_layout.addLayout(quality_grid)
+        body.addWidget(self.section_quality)
 
-        # 5. PROGRESS & ACTIONS CARD
+        self.section_audio = CollapsibleSection(self.i18n('audio_format_label').rstrip(':').lower())
+        audio_grid = QGridLayout()
+        audio_grid.setHorizontalSpacing(14)
+        audio_grid.setVerticalSpacing(8)
+        audio_grid.addWidget(self.audio_format_label, 0, 0)
+        audio_grid.addWidget(self.audio_format_combo, 0, 1)
+        audio_grid.addWidget(self.audio_quality_label, 0, 2)
+        audio_grid.addWidget(self.audio_quality_combo, 0, 3)
+        audio_grid.setColumnStretch(1, 1)
+        audio_grid.setColumnStretch(3, 2)
+        self.section_audio.content_layout.addLayout(audio_grid)
+        body.addWidget(self.section_audio)
+
+        self.section_playlist = CollapsibleSection(self.i18n('playlist_prefix').rstrip(':').lower())
+        playlist_box = QVBoxLayout()
+        playlist_box.setSpacing(2)
+        playlist_box.addWidget(self.chk_playlist)
+        playlist_box.addWidget(self.playlist_tip)
+        self.section_playlist.content_layout.addLayout(playlist_box)
+        body.addWidget(self.section_playlist)
+
+        self.section_extras = CollapsibleSection(self.i18n('section_extras').lower())
+        extras_grid = QGridLayout()
+        extras_grid.setHorizontalSpacing(18)
+        extras_grid.setVerticalSpacing(8)
+        extras_grid.addWidget(self.chk_embed_thumb, 0, 0)
+        extras_grid.addWidget(self.chk_embed_meta, 0, 1)
+        sub_box = QHBoxLayout()
+        sub_box.setSpacing(8)
+        sub_box.addWidget(self.chk_subtitles)
+        sub_box.addWidget(self.sub_lang_label)
+        sub_box.addWidget(self.sub_lang_combo)
+        sub_box.addStretch(1)
+        extras_grid.addLayout(sub_box, 1, 0, 1, 2)
+        extras_grid.addWidget(self.chk_video_muted, 2, 0)
+        self.section_extras.content_layout.addLayout(extras_grid)
+        body.addWidget(self.section_extras)
+
+        body.addStretch(1)
+        scroll_area.setWidget(scroll_content)
+        page_layout.addWidget(scroll_area, 1)
+
+        # --- fixed action bar ---
+        action_bar = QFrame()
+        action_bar.setObjectName('ActionBar')
+        bar_layout = QHBoxLayout(action_bar)
+        bar_layout.setContentsMargins(14, 10, 14, 10)
+        bar_layout.setSpacing(10)
+
+        self.btn_back = QPushButton(self.i18n('btn_back').lower())
+        self.btn_back.setObjectName('GhostButton')
+        self.btn_back.clicked.connect(self._go_home)
+        bar_layout.addWidget(self.btn_back)
+        bar_layout.addStretch(1)
+
+        self.btn_download = QPushButton(self.i18n('btn_download_now').lower())
+        self.btn_download.setObjectName('PrimaryButton')
+        self.btn_download.setProperty('big', True)
+        self.btn_download.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_download.clicked.connect(self._start_download)
+        bar_layout.addWidget(self.btn_download)
+        page_layout.addWidget(action_bar)
+
+        # --- wiring for live summaries ---
+        self.quality_combo.currentIndexChanged.connect(self._render_summaries)
+        self.format_combo.currentIndexChanged.connect(self._render_summaries)
+        self.chk_playlist.toggled.connect(self._render_summaries)
+        self.chk_embed_thumb.toggled.connect(self._render_summaries)
+        self.chk_embed_meta.toggled.connect(self._render_summaries)
+        self.chk_video_muted.toggled.connect(self._render_summaries)
+        return page
+
+    def _build_progress_page(self) -> QWidget:
+        page = QWidget()
+        page.setObjectName('PageProgress')
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 16, 18, 12)
+        layout.setSpacing(10)
+
+        layout.addStretch(2)
+
         progress_card = QFrame()
         progress_card.setProperty('class', 'Card')
         progress_layout = QVBoxLayout(progress_card)
         progress_layout.setContentsMargins(14, 12, 14, 12)
         progress_layout.setSpacing(10)
 
-        # Status Label and Action Buttons
         action_row = QHBoxLayout()
         action_row.setSpacing(10)
 
@@ -1023,79 +876,195 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel(self.i18n('status_ready').lower())
         self.status_label.setStyleSheet('font-size: 12px; font-weight: 600; color: #f0f6fc;')
         action_row.addWidget(self.status_label)
-        action_row.addStretch()
+        action_row.addStretch(1)
 
         self.btn_open_file = QPushButton(self.i18n('open_file').lower())
         self.btn_open_file.setVisible(False)
         self.btn_open_file.clicked.connect(self._open_downloaded_file)
         action_row.addWidget(self.btn_open_file)
-
-        self.btn_cancel = QPushButton(self.i18n('btn_cancel').lower())
-        self.btn_cancel.setObjectName('CancelButton')
-        self.btn_cancel.setEnabled(False)
-        self.btn_cancel.clicked.connect(self._cancel_download)
-        action_row.addWidget(self.btn_cancel)
-
-        self.btn_download = QPushButton(self.i18n('btn_download').lower())
-        self.btn_download.setObjectName('PrimaryButton')
-        self.btn_download.clicked.connect(self._start_download)
-        action_row.addWidget(self.btn_download)
-
         progress_layout.addLayout(action_row)
 
-        # Progress Bar
         self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName('MainProgress')
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         progress_layout.addWidget(self.progress_bar)
 
-        # Metrics Row
         metrics_row = QHBoxLayout()
         metrics_row.setSpacing(12)
-
-        # Percentage
         self.pct_box = self._create_metric_widget(self.i18n('progress_label'), '0%')
         metrics_row.addWidget(self.pct_box, 1)
-
-        # Speed
         self.speed_box = self._create_metric_widget(self.i18n('speed_label'), '--')
         metrics_row.addWidget(self.speed_box, 1)
-
-        # ETA
         self.eta_box = self._create_metric_widget(self.i18n('eta_label'), '--:--')
         metrics_row.addWidget(self.eta_box, 1)
-
-        # Size
         self.size_box = self._create_metric_widget(self.i18n('size_label'), '0 mb / 0 mb', is_last=True)
         metrics_row.addWidget(self.size_box, 1)
-
         progress_layout.addLayout(metrics_row)
-        body_layout.addWidget(progress_card)
 
-        # 6. LOGS (COLLAPSIBLE)
+        layout.addWidget(progress_card)
+
+        # Buttons row below the card
+        buttons_row = QHBoxLayout()
+        buttons_row.setSpacing(8)
+
+        self.btn_back_settings = QPushButton(self.i18n('btn_back_to_settings').lower())
+        self.btn_back_settings.setObjectName('GhostButton')
+        self.btn_back_settings.clicked.connect(self._back_to_settings)
+        buttons_row.addWidget(self.btn_back_settings)
+
+        buttons_row.addStretch(1)
+
+        self.btn_open_folder = QPushButton(f"📁 {self.i18n('open_folder').lower()}")
+        self.btn_open_folder.clicked.connect(self._open_output_dir)
+        buttons_row.addWidget(self.btn_open_folder)
+
+        self.btn_cancel = QPushButton(self.i18n('btn_cancel').lower())
+        self.btn_cancel.setObjectName('CancelButton')
+        self.btn_cancel.setEnabled(False)
+        self.btn_cancel.setVisible(False)
+        self.btn_cancel.clicked.connect(self._cancel_download)
+        buttons_row.addWidget(self.btn_cancel)
+
+        self.btn_new_download = QPushButton(self.i18n('btn_new_download').lower())
+        self.btn_new_download.setObjectName('PrimaryButton')
+        self.btn_new_download.setVisible(False)
+        self.btn_new_download.clicked.connect(self._start_new_download_flow)
+        buttons_row.addWidget(self.btn_new_download)
+        layout.addLayout(buttons_row)
+
+        # Collapsible activity log
         log_header_layout = QHBoxLayout()
         self.btn_toggle_logs = QPushButton(self.i18n('toggle_logs_show').lower())
         self.btn_toggle_logs.setStyleSheet('border: none; background: transparent; color: #34d399; text-align: left; font-size: 11px;')
         self.btn_toggle_logs.clicked.connect(self._toggle_logs)
         log_header_layout.addWidget(self.btn_toggle_logs)
-        log_header_layout.addStretch()
-        self.chk_auto_update = QCheckBox('')
-        self.chk_auto_update.setChecked(self.update_settings.auto_check_updates)
-        self.chk_auto_update.toggled.connect(self._on_auto_update_toggled)
-        log_header_layout.addWidget(self.chk_auto_update)
-        body_layout.addLayout(log_header_layout)
+        log_header_layout.addStretch(1)
+        layout.addLayout(log_header_layout)
 
         self.log_view = QTextEdit()
         self.log_view.setObjectName('LogView')
         self.log_view.setReadOnly(True)
-        self.log_view.setMaximumHeight(130)
+        self.log_view.setMaximumHeight(150)
         self.log_view.setVisible(False)
-        body_layout.addWidget(self.log_view)
+        layout.addWidget(self.log_view)
 
-        scroll_area.setWidget(scroll_content)
-        root_layout.addWidget(scroll_area)
+        layout.addStretch(3)
+        return page
 
-        self._update_controls_visibility()
+    def _build_drawer(self) -> None:
+        """Hamburger sidebar: actions, preferences and system entries."""
+        self.drawer_overlay = _DrawerOverlay(self)
+        self.drawer_overlay.setObjectName('DrawerOverlay')
+        self.drawer_overlay.setVisible(False)
+        self.drawer_overlay.clicked.connect(self._close_drawer)
+
+        self.drawer = QFrame(self)
+        self.drawer.setObjectName('DrawerFrame')
+        self.drawer.setFixedWidth(264)
+
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(28)
+        shadow.setXOffset(6)
+        shadow.setColor(QColor(0, 0, 0, 170))
+        self.drawer.setGraphicsEffect(shadow)
+
+        drawer_layout = QVBoxLayout(self.drawer)
+        drawer_layout.setContentsMargins(10, 14, 10, 10)
+        drawer_layout.setSpacing(2)
+
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(8)
+        drawer_logo = QLabel()
+        if self.logo_path and self.logo_path.exists():
+            drawer_logo.setPixmap(QPixmap(str(self.logo_path)).scaled(
+                22, 22, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+            ))
+        else:
+            drawer_logo.setText('▶')
+            drawer_logo.setStyleSheet('font-size: 14px; color: #34d399;')
+        brand_row.addWidget(drawer_logo)
+        self.drawer_brand = QLabel(self.i18n('app_title').lower())
+        self.drawer_brand.setObjectName('DrawerBrand')
+        brand_row.addWidget(self.drawer_brand)
+        brand_row.addStretch(1)
+        drawer_layout.addLayout(brand_row)
+
+        self.drawer_group_downloads = QLabel(self.i18n('drawer_downloads').lower())
+        self.drawer_group_downloads.setObjectName('DrawerGroup')
+        drawer_layout.addWidget(self.drawer_group_downloads)
+
+        self.btn_drawer_new = QPushButton(self.i18n('drawer_new_download').lower())
+        self.btn_drawer_new.setObjectName('DrawerItem')
+        self.btn_drawer_new.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_drawer_new.clicked.connect(self._on_drawer_new_download)
+        drawer_layout.addWidget(self.btn_drawer_new)
+
+        self.btn_drawer_folder = QPushButton(f"📁 {self.i18n('open_folder').lower()}")
+        self.btn_drawer_folder.setObjectName('DrawerItem')
+        self.btn_drawer_folder.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_drawer_folder.clicked.connect(self._open_output_dir)
+        drawer_layout.addWidget(self.btn_drawer_folder)
+
+        self.drawer_group_preferences = QLabel(self.i18n('drawer_preferences').lower())
+        self.drawer_group_preferences.setObjectName('DrawerGroup')
+        drawer_layout.addWidget(self.drawer_group_preferences)
+
+        self.btn_drawer_save = QPushButton('')
+        self.btn_drawer_save.setObjectName('DrawerItem')
+        self.btn_drawer_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_drawer_save.clicked.connect(self._choose_output_dir)
+        drawer_layout.addWidget(self.btn_drawer_save)
+
+        lang_row = QHBoxLayout()
+        lang_row.setContentsMargins(6, 4, 6, 4)
+        self.lang_label = QLabel('')
+        self.lang_label.setVisible(False)
+        self.lang_combo = QComboBox()
+        self.lang_combo.setObjectName('LangCombo')
+        self.lang_combo.addItem('🌐 pt-br', 'pt_BR')
+        self.lang_combo.addItem('🌐 en-us', 'en_US')
+        lang_idx = 0 if self.i18n.current_lang == 'pt_BR' else 1
+        self.lang_combo.setCurrentIndex(lang_idx)
+        self.lang_combo.currentIndexChanged.connect(self._on_language_changed)
+        lang_row.addWidget(self.lang_combo)
+        lang_row.addStretch(1)
+        drawer_layout.addLayout(lang_row)
+
+        auto_update_row = QHBoxLayout()
+        auto_update_row.setContentsMargins(6, 2, 6, 2)
+        self.chk_auto_update = QCheckBox('')
+        self.chk_auto_update.setChecked(self.update_settings.auto_check_updates)
+        self.chk_auto_update.toggled.connect(self._on_auto_update_toggled)
+        auto_update_row.addWidget(self.chk_auto_update)
+        auto_update_row.addStretch(1)
+        drawer_layout.addLayout(auto_update_row)
+
+        self.drawer_group_system = QLabel(self.i18n('drawer_system').lower())
+        self.drawer_group_system.setObjectName('DrawerGroup')
+        drawer_layout.addWidget(self.drawer_group_system)
+
+        self.btn_drawer_updates = QPushButton(self.i18n('drawer_check_updates').lower())
+        self.btn_drawer_updates.setObjectName('DrawerItem')
+        self.btn_drawer_updates.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_drawer_updates.clicked.connect(self._manual_update_check)
+        drawer_layout.addWidget(self.btn_drawer_updates)
+
+        self.btn_drawer_logs = QPushButton(self.i18n('drawer_show_logs').lower())
+        self.btn_drawer_logs.setObjectName('DrawerItem')
+        self.btn_drawer_logs.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_drawer_logs.clicked.connect(self._open_logs)
+        drawer_layout.addWidget(self.btn_drawer_logs)
+
+        drawer_layout.addStretch(1)
+        self.drawer_version = QLabel(f'v{__version__}')
+        self.drawer_version.setObjectName('DrawerVersion')
+        drawer_layout.addWidget(self.drawer_version)
+
+        self._drawer_animation = QPropertyAnimation(self.drawer, b'pos', self)
+        self._drawer_animation.setDuration(190)
+        self._drawer_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._drawer_animation.finished.connect(self._on_drawer_animation_finished)
 
     def _create_metric_widget(self, label_text: str, default_val: str, is_last: bool = False) -> QFrame:
         frame = QFrame()
@@ -1116,33 +1085,167 @@ class MainWindow(QMainWindow):
         frame.val_widget = val
         return frame
 
+    # ------------------------------------------------------------------
+    # drawer behaviour
+    # ------------------------------------------------------------------
+    def _toggle_drawer(self) -> None:
+        if not self.drawer.isHidden():
+            self._close_drawer()
+        else:
+            self._open_drawer()
+
+    def _open_drawer(self) -> None:
+        self.drawer_overlay.setGeometry(0, 0, self.width(), self.height())
+        self.drawer.setGeometry(-self.drawer.width(), 0, self.drawer.width(), self.height())
+        self.drawer_overlay.setVisible(True)
+        self.drawer_overlay.raise_()
+        self.drawer.setVisible(True)
+        self.drawer.raise_()
+        self._drawer_animation.stop()
+        self._drawer_animation.setStartValue(QPoint(-self.drawer.width(), 0))
+        self._drawer_animation.setEndValue(QPoint(0, 0))
+        self._drawer_animation.start()
+
+    def _close_drawer(self) -> None:
+        if self.drawer.isHidden():
+            return
+        self._drawer_animation.stop()
+        self._drawer_animation.setStartValue(self.drawer.pos())
+        self._drawer_animation.setEndValue(QPoint(-self.drawer.width(), 0))
+        self._drawer_animation.start()
+
+    def _on_drawer_animation_finished(self) -> None:
+        if self.drawer.x() < 0:
+            self.drawer.setVisible(False)
+            self.drawer_overlay.setVisible(False)
+
+    def _on_drawer_new_download(self) -> None:
+        self._close_drawer()
+        self._start_new_download_flow()
+
+    def _open_logs(self) -> None:
+        self._close_drawer()
+        self._set_phase(PHASE_PROGRESS)
+        if not self.log_view.isVisible():
+            self._toggle_logs()
+
+    # ------------------------------------------------------------------
+    # guided-flow phases & summaries
+    # ------------------------------------------------------------------
+    def _set_phase(self, phase: int) -> None:
+        self._phase = phase
+        self.stack.setCurrentIndex(phase)
+        self.stepper_row.setVisible(phase != PHASE_HOME)
+        self._render_stepper()
+
+    def _render_stepper(self) -> None:
+        if not hasattr(self, 'step_dots'):
+            return
+        step_keys = ('step_link', 'step_settings', 'step_download')
+        for index in range(3):
+            done = index < self._phase
+            active = index == self._phase
+
+            dot = self.step_dots[index]
+            dot.setText('●' if (done or active) else '○')
+            dot.setObjectName('StepDotActive' if active else ('StepDotDone' if done else 'StepDot'))
+
+            text = self.step_texts[index]
+            text.setText(self.i18n(step_keys[index]).lower())
+            text.setObjectName('StepTextActive' if active else 'StepText')
+
+            _repolish(dot)
+            _repolish(text)
+
+    def _render_save_to(self) -> None:
+        prefix = self.i18n('destination_folder').lower()
+        full_text = f'{prefix} {self.output_dir}'
+        metrics = QFontMetrics(self.btn_save_to.font())
+        elided = metrics.elidedText(full_text, Qt.TextElideMode.ElideMiddle, 460)
+        self.btn_save_to.setText(elided)
+        self.btn_save_to.setToolTip(full_text)
+        if hasattr(self, 'btn_drawer_save'):
+            drawer_metrics = QFontMetrics(self.btn_drawer_save.font())
+            drawer_elided = drawer_metrics.elidedText(full_text, Qt.TextElideMode.ElideMiddle, 200)
+            self.btn_drawer_save.setText(drawer_elided)
+            self.btn_drawer_save.setToolTip(full_text)
+
+    def _render_summaries(self) -> None:
+        """Refreshes the collapsed accordion summary values (compact mode)."""
+        if not hasattr(self, 'section_quality'):
+            return
+
+        quality = self.quality_combo.currentData()
+        if quality:
+            quality_short = self.i18n(f'quality_short_{quality}').lower()
+            container = self.format_combo.currentData() or ''
+            self.section_quality.set_summary(f'{quality_short} · {container}')
+
+        codec = self.audio_format_combo.currentData() or ''
+        bitrate = self.audio_quality_combo.currentData() or ''
+        if bitrate == '0':
+            bitrate_short = self.i18n('audio_quality_wav').lower()
+        else:
+            bitrate_short = self.i18n(f'audio_quality_short_{bitrate}').lower()
+        if codec and bitrate:
+            self.section_audio.set_summary(f'{codec} · {bitrate_short}')
+
+        if self.chk_playlist.isChecked():
+            if self._playlist_count:
+                self.section_playlist.set_summary(
+                    self.i18n('summary_playlist_all', count=self._playlist_count).lower()
+                )
+            else:
+                self.section_playlist.set_summary(self.i18n('opt_playlist').lower())
+        else:
+            self.section_playlist.set_summary(self.i18n('summary_single_video').lower())
+
+        extras: list[str] = []
+        if self.chk_embed_thumb.isChecked():
+            extras.append(self.i18n('summary_extras_cover').lower())
+        if self.chk_embed_meta.isChecked():
+            extras.append(self.i18n('summary_extras_metadata').lower())
+        if self.chk_subtitles.isChecked() and self.chk_subtitles.isVisible():
+            extras.append(self.i18n('summary_extras_subs').lower())
+        if self.chk_video_muted.isVisible() and self.chk_video_muted.isChecked():
+            extras.append(self.i18n('summary_extras_muted').lower())
+        self.section_extras.set_summary(' · '.join(extras) if extras else self.i18n('summary_extras_none').lower())
+
+    # ------------------------------------------------------------------
+    # translations
+    # ------------------------------------------------------------------
     def apply_translations(self) -> None:
         """Updates all strings according to current language (all lowercase)."""
         self.setWindowTitle(self.i18n('app_title').lower())
         self.app_title_label.setText(self.i18n('app_title').lower())
-        self.app_subtitle_label.setText(self.i18n('app_subtitle').lower())
         self.version_badge.setText(f'v{__version__}')
         self.version_badge.setToolTip(self.i18n('update_check_tooltip').lower())
 
-        self.section_source_label.setText(self.i18n('section_source').lower())
+        # hero (home phase)
+        self.hero_title_label.setText(self.i18n('hero_title').lower())
+        self.app_subtitle_label.setText(self.i18n('app_subtitle').lower())
         self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
         self.btn_paste.setText(self.i18n('paste_button').lower())
-        self.btn_clear.setText(self.i18n('clear_button').lower())
-        self.dest_label.setText(self.i18n('destination_folder').lower())
-        self.btn_browse.setText(f"🔍 {self.i18n('browse_folder').lower()}")
-        self.btn_open_folder.setText(f"📁 {self.i18n('open_folder').lower()}")
+        self.hero_hint_label.setText(self.i18n('hero_hint').lower())
+        self._render_save_to()
+        self._render_stepper()
 
-        self.section_preview_label.setText(self.i18n('section_preview').lower())
+        # preview
         if not self.last_fetched_url:
             self.preview_title.setText(self.i18n('preview_empty').lower())
 
-        self.section_options_label.setText(self.i18n('section_options').lower())
+        # configure page
         self.radio_video.setText(self.i18n('mode_video').lower())
         self.radio_audio.setText(self.i18n('mode_audio').lower())
         self.radio_split.setText(self.i18n('mode_split').lower())
         self.radio_thumbnail.setText(self.i18n('mode_thumbnail').lower())
         self.thumb_mode_notice.setText(self.i18n('notice_thumbnail_mode').lower())
         self.chk_video_muted.setText(self.i18n('opt_video_muted').lower())
+
+        self.section_quality.set_title(self.i18n('quality_label').rstrip(':').lower())
+        self.section_audio.set_title(self.i18n('audio_format_label').rstrip(':').lower())
+        self.section_playlist.set_title(self.i18n('playlist_prefix').rstrip(':').lower())
+        self.section_extras.set_title(self.i18n('section_extras').lower())
 
         self.quality_label.setText(self.i18n('quality_label').lower())
         self.format_label.setText(self.i18n('format_label').lower())
@@ -1156,12 +1259,18 @@ class MainWindow(QMainWindow):
         self.chk_playlist.setText(self.i18n('opt_playlist').lower())
         self.playlist_tip.setText(self.i18n('playlist_notice').lower())
 
+        # action buttons
+        self.btn_back.setText(self.i18n('btn_back').lower())
+        self.btn_back_settings.setText(self.i18n('btn_back_to_settings').lower())
+        self.btn_new_download.setText(self.i18n('btn_new_download').lower())
+        self.btn_cancel.setText(self.i18n('btn_cancel').lower())
+        self.btn_open_file.setText(self.i18n('open_file').lower())
+        self.btn_open_folder.setText(f"📁 {self.i18n('open_folder').lower()}")
+
         if self.download_thread and self.download_thread.isRunning():
             self.btn_download.setText(self.i18n('btn_downloading').lower())
         else:
-            self.btn_download.setText(self.i18n('btn_download').lower())
-        self.btn_cancel.setText(self.i18n('btn_cancel').lower())
-        self.btn_open_file.setText(self.i18n('open_file').lower())
+            self.btn_download.setText(self.i18n('btn_download_now').lower())
 
         if not self.download_thread or not self.download_thread.isRunning():
             if self.last_downloaded_file:
@@ -1209,21 +1318,23 @@ class MainWindow(QMainWindow):
         if idx >= 0:
             self.sub_lang_combo.setCurrentIndex(idx)
 
-        # Update audio quality combo according to format
-        self._update_wav_state()
+        # drawer
+        self.drawer_brand.setText(self.i18n('app_title').lower())
+        self.drawer_group_downloads.setText(self.i18n('drawer_downloads').lower())
+        self.drawer_group_preferences.setText(self.i18n('drawer_preferences').lower())
+        self.drawer_group_system.setText(self.i18n('drawer_system').lower())
+        self.btn_drawer_new.setText(self.i18n('drawer_new_download').lower())
+        self.btn_drawer_folder.setText(f"📁 {self.i18n('open_folder').lower()}")
+        self.btn_drawer_updates.setText(self.i18n('drawer_check_updates').lower())
+        self.btn_drawer_logs.setText(self.i18n('drawer_show_logs').lower())
+        self.drawer_version.setText(f'v{__version__}')
 
-        # Update subtitle lang combo text
-        cur_sl = self.sub_lang_combo.currentData()
-        self.sub_lang_combo.clear()
-        self.sub_lang_combo.addItem(self.i18n('sub_lang_pt').lower(), 'pt')
-        self.sub_lang_combo.addItem(self.i18n('sub_lang_en').lower(), 'en')
-        self.sub_lang_combo.addItem(self.i18n('sub_lang_all').lower(), 'all')
-        idx = self.sub_lang_combo.findData(cur_sl)
-        if idx >= 0:
-            self.sub_lang_combo.setCurrentIndex(idx)
-
+        self._render_summaries()
         self._render_update_state()
 
+    # ------------------------------------------------------------------
+    # mode-dependent controls visibility & summary refresh
+    # ------------------------------------------------------------------
     def _on_audio_format_changed(self) -> None:
         self._update_wav_state()
 
@@ -1254,6 +1365,8 @@ class MainWindow(QMainWindow):
         else:
             self.chk_embed_thumb.setEnabled(True)
             self.chk_embed_thumb.setToolTip('')
+
+        self._render_summaries()
 
     # ------------------------------------------------------------------
     # update flow
@@ -1663,6 +1776,7 @@ class MainWindow(QMainWindow):
         show_video_opts = is_video or is_split
         show_audio_opts = is_audio or is_split
 
+        # leaf-level visibility (kept for tests and precise state handling)
         self.quality_label.setVisible(show_video_opts)
         self.quality_combo.setVisible(show_video_opts)
         self.format_label.setVisible(show_video_opts)
@@ -1682,11 +1796,22 @@ class MainWindow(QMainWindow):
         self.sub_lang_label.setVisible(show_video_opts)
         self.sub_lang_combo.setVisible(show_video_opts)
 
+        # section-level visibility (accordion collapsed/hidden per mode)
+        self.section_quality.setVisible(show_video_opts)
+        self.section_audio.setVisible(show_audio_opts)
+        self.section_playlist.setVisible(not is_thumb)
+        self.section_extras.setVisible(not is_thumb)
+
         self._update_wav_state()
+        self._render_summaries()
 
     def _on_subtitles_toggled(self, checked: bool) -> None:
         self.sub_lang_combo.setEnabled(checked)
+        self._render_summaries()
 
+    # ------------------------------------------------------------------
+    # url & metadata flow
+    # ------------------------------------------------------------------
     def _on_url_text_changed(self, text: str) -> None:
         url = text.strip()
         if not url or not (url.startswith('http://') or url.startswith('https://')):
@@ -1703,6 +1828,13 @@ class MainWindow(QMainWindow):
         if url != self.last_fetched_url:
             self.debounce_timer.stop()
             self.debounce_timer.start(500)
+
+    def _fetch_metadata_now(self) -> None:
+        """Enter key on the url field: skip the debounce and fetch immediately."""
+        self.debounce_timer.stop()
+        url = self.url_input.text().strip()
+        if url:
+            self._fetch_metadata()
 
     def _fetch_metadata(self) -> None:
         url = self.url_input.text().strip()
@@ -1739,16 +1871,18 @@ class MainWindow(QMainWindow):
 
         if info.get('is_playlist'):
             count = info.get('playlist_count', 0)
+            self._playlist_count = count or 0
             prefix = self.i18n('playlist_prefix').lower()
             suffix = self.i18n('items_suffix').lower()
             self.preview_playlist_badge.setText(f'{prefix} {count} {suffix}' if count else f'{prefix}')
             self.chk_playlist.setChecked(True)
         else:
+            self._playlist_count = 0
             self.preview_playlist_badge.setText('')
 
         if pixmap and not pixmap.isNull():
             scaled = pixmap.scaled(
-                148, 83, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation
+                128, 72, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation
             )
             self.thumb_label.setPixmap(scaled)
             self.thumb_label.setText('')
@@ -1759,19 +1893,42 @@ class MainWindow(QMainWindow):
         self.status_label.setText(self.i18n('preview_ready').lower())
         self.status_dot.setStyleSheet('color: #10b981; font-size: 13px;')
 
+        # smart defaults are enough: the flow advances automatically
+        self._render_summaries()
+        self._set_phase(PHASE_CONFIGURE)
+
     @Slot(str)
     def _on_metadata_failed(self, error: str) -> None:
         self.preview_title.setText(self.i18n('preview_error').lower())
         self.log(f'[aviso preview] {clean_ansi(error)}')
+        # keep the flow forgiving: the direct download may still work
+        self._set_phase(PHASE_CONFIGURE)
 
     def _paste_clipboard(self) -> None:
         text = QApplication.clipboard().text()
         if text:
             self.url_input.setText(text.strip())
 
+    def _prefill_from_clipboard(self) -> None:
+        """Prefills the url field with a link found on the clipboard at startup."""
+        if not self.isVisible() or self.url_input.text().strip():
+            return
+        try:
+            text = (QApplication.clipboard().text() or '').strip()
+        except Exception:
+            return
+        if (
+            text.startswith(('http://', 'https://'))
+            and len(text) <= 2048
+            and '\n' not in text
+            and ' ' not in text
+        ):
+            self.url_input.setText(text)
+
     def _clear_url(self) -> None:
         self.url_input.clear()
         self.last_fetched_url = ''
+        self._playlist_count = 0
         self.preview_title.setText(self.i18n('preview_empty').lower())
         self.preview_channel.setText('')
         self.preview_duration.setText('')
@@ -1779,11 +1936,57 @@ class MainWindow(QMainWindow):
         self.thumb_label.setPixmap(QPixmap())
         self.thumb_label.setText('preview')
 
+    # ------------------------------------------------------------------
+    # navigation between phases
+    # ------------------------------------------------------------------
+    def _go_home(self) -> None:
+        if self.download_thread and self.download_thread.isRunning():
+            return
+        self._set_phase(PHASE_HOME)
+
+    def _back_to_settings(self) -> None:
+        if self.download_thread and self.download_thread.isRunning():
+            return
+        self.btn_download.setEnabled(True)
+        self.btn_download.setText(self.i18n('btn_download_now').lower())
+        self._set_phase(PHASE_CONFIGURE)
+
+    def _start_new_download_flow(self) -> None:
+        if self.download_thread and self.download_thread.isRunning():
+            self.status_label.setText(self.i18n('alert_already_running').lower())
+            return
+        if self.update_download_thread and self.update_download_thread.isRunning():
+            self.status_label.setText(self.i18n('update_busy').lower())
+            self.status_dot.setStyleSheet('color: #f59e0b; font-size: 13px;')
+            return
+        self._reset_for_new_download()
+        self._set_phase(PHASE_HOME)
+
+    def _reset_for_new_download(self) -> None:
+        self.last_downloaded_file = ''
+        self._clear_url()
+        self.progress_bar.setValue(0)
+        self.pct_box.val_widget.setText('0%')
+        self.speed_box.val_widget.setText('--')
+        self.eta_box.val_widget.setText('--:--')
+        self.size_box.val_widget.setText('0 mb / 0 mb')
+        self.btn_open_file.setVisible(False)
+        self.btn_new_download.setVisible(False)
+        self.btn_back_settings.setVisible(True)
+        self.btn_cancel.setVisible(False)
+        self.btn_cancel.setEnabled(False)
+        if not self.download_thread or not self.download_thread.isRunning():
+            self.status_label.setText(self.i18n('status_ready').lower())
+            self.status_dot.setStyleSheet('color: #34d399; font-size: 13px;')
+
+    # ------------------------------------------------------------------
+    # destination folder
+    # ------------------------------------------------------------------
     def _choose_output_dir(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, self.i18n('browse_folder').lower(), self.output_dir)
         if directory:
             self.output_dir = directory
-            self.dest_path_input.setText(directory)
+            self._render_save_to()
             self.log(f'> pasta de saída: {directory}')
 
     def _open_output_dir(self) -> None:
@@ -1806,11 +2009,15 @@ class MainWindow(QMainWindow):
         clean = clean_ansi(message)
         self.log_view.append(clean)
 
+    # ------------------------------------------------------------------
+    # download flow
+    # ------------------------------------------------------------------
     def _start_download(self) -> None:
         url = self.url_input.text().strip()
         if not url:
             self.status_label.setText(self.i18n('alert_no_url').lower())
             self.status_dot.setStyleSheet('color: #EF4444; font-size: 13px;')
+            self.log(f'> {self.i18n("alert_no_url").lower()}')
             return
 
         if self.download_thread and self.download_thread.isRunning():
@@ -1855,8 +2062,11 @@ class MainWindow(QMainWindow):
         # UI state during download
         self.btn_download.setEnabled(False)
         self.btn_download.setText(self.i18n('btn_downloading').lower())
+        self.btn_cancel.setVisible(True)
         self.btn_cancel.setEnabled(True)
         self.btn_open_file.setVisible(False)
+        self.btn_new_download.setVisible(False)
+        self.btn_back_settings.setVisible(False)
         self.progress_bar.setValue(0)
         if options.mode == 'split':
             self.status_label.setText(self.i18n('status_downloading_split').lower())
@@ -1868,6 +2078,8 @@ class MainWindow(QMainWindow):
         self.speed_box.val_widget.setText('--')
         self.eta_box.val_widget.setText('--:--')
         self.size_box.val_widget.setText('0 mb / 0 mb')
+
+        self._set_phase(PHASE_PROGRESS)
 
         self.download_thread = DownloadWorker(url, options)
         self.download_thread.log.connect(self.log)
@@ -1883,7 +2095,7 @@ class MainWindow(QMainWindow):
             self.status_dot.setStyleSheet('color: #F59E0B; font-size: 13px;')
             self.btn_cancel.setEnabled(False)
             self.btn_download.setEnabled(True)
-            self.btn_download.setText(self.i18n('btn_download').lower())
+            self.btn_download.setText(self.i18n('btn_download_now').lower())
 
     @Slot(object)
     def _on_download_progress(self, info: ProgressInfo) -> None:
@@ -1904,8 +2116,11 @@ class MainWindow(QMainWindow):
     @Slot(dict)
     def _on_download_finished(self, info: dict) -> None:
         self.btn_download.setEnabled(True)
-        self.btn_download.setText(self.i18n('btn_download').lower())
+        self.btn_download.setText(self.i18n('btn_download_now').lower())
+        self.btn_cancel.setVisible(False)
         self.btn_cancel.setEnabled(False)
+        self.btn_new_download.setVisible(True)
+        self.btn_back_settings.setVisible(True)
         self.progress_bar.setValue(100)
         self.pct_box.val_widget.setText('100%')
         if info.get('video_path') and info.get('audio_path'):
@@ -1925,13 +2140,53 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def _on_download_failed(self, error: str) -> None:
         self.btn_download.setEnabled(True)
-        self.btn_download.setText(self.i18n('btn_download').lower())
+        self.btn_download.setText(self.i18n('btn_download_now').lower())
+        self.btn_cancel.setVisible(False)
         self.btn_cancel.setEnabled(False)
+        self.btn_new_download.setVisible(True)
+        self.btn_back_settings.setVisible(True)
         self.status_label.setText(self.i18n('status_failed').lower())
         self.status_dot.setStyleSheet('color: #EF4444; font-size: 13px;')
         self.log(f'✖ erro: {error}')
 
-    def closeEvent(self, event) -> None:
+    # ------------------------------------------------------------------
+    # drag & drop and key handling
+    # ------------------------------------------------------------------
+    def dragEnterEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        mime = event.mimeData()
+        text = mime.text().strip() if mime.hasText() else ''
+        if mime.hasUrls() or text.startswith(('http://', 'https://')):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        mime = event.mimeData()
+        url = ''
+        if mime.hasUrls() and mime.urls():
+            url = mime.urls()[0].toString()
+        elif mime.hasText():
+            url = mime.text().strip()
+        if url.startswith(('http://', 'https://')):
+            self._set_phase(PHASE_HOME)
+            self.url_input.setText(url)
+            event.acceptProposedAction()
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        if event.key() == Qt.Key.Key_Escape:
+            if self.drawer.isVisible():
+                self._close_drawer()
+                return
+            if self._phase == PHASE_CONFIGURE:
+                self._go_home()
+                return
+        super().keyPressEvent(event)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().resizeEvent(event)
+        if getattr(self, 'drawer_overlay', None) is not None and self.drawer_overlay.isVisible():
+            self.drawer_overlay.setGeometry(0, 0, self.width(), self.height())
+            self.drawer.resize(self.drawer.width(), self.height())
+
+    def closeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         if self.update_download_thread and self.update_download_thread.isRunning():
             self.update_download_thread.cancel()
             self.update_download_thread.wait(3000)
