@@ -25,6 +25,56 @@ def clean_ansi(text: str) -> str:
     return ANSI_ESCAPE_RE.sub('', str(text))
 
 
+def get_app_bin_dir() -> Path:
+    """Returns the optional ``bin`` directory shipped next to the application.
+
+    The Windows installer places ``ffmpeg.exe`` and ``ffprobe.exe`` in
+    ``<install dir>\\bin``.  Portable builds use the same layout next to the
+    executable, while source checkouts look in the repository root.
+    """
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys.executable).resolve().parent
+    else:
+        base_dir = _ROOT_DIR
+    return base_dir / 'bin'
+
+
+def ensure_local_ffmpeg_on_path(bin_dir: Path | None = None) -> str | None:
+    """Prepends the local media tools directory to ``PATH`` when both exist.
+
+    Returns the directory when ``ffmpeg`` and ``ffprobe`` are available so the
+    caller can also pass it to yt-dlp as ``ffmpeg_location``.
+    """
+    directory = Path(bin_dir) if bin_dir is not None else get_app_bin_dir()
+    ffmpeg = directory / ('ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
+    ffprobe = directory / ('ffprobe.exe' if os.name == 'nt' else 'ffprobe')
+    if not (ffmpeg.is_file() and ffprobe.is_file()):
+        return None
+
+    current_path = os.environ.get('PATH', '')
+    entries = current_path.split(os.pathsep) if current_path else []
+    normalized = os.path.normcase(str(directory))
+    if not entries or os.path.normcase(entries[0]) != normalized:
+        os.environ['PATH'] = str(directory) + (os.pathsep + current_path if current_path else '')
+    return str(directory)
+
+
+def get_ffmpeg_executable(bin_dir: Path | None = None) -> str:
+    """Returns the local ffmpeg binary when present, otherwise ``ffmpeg``."""
+    directory = Path(bin_dir) if bin_dir is not None else get_app_bin_dir()
+    names = ('ffmpeg.exe', 'ffmpeg') if os.name == 'nt' else ('ffmpeg',)
+    for name in names:
+        candidate = directory / name
+        if candidate.is_file():
+            return str(candidate)
+    return 'ffmpeg'
+
+
+# Resolve the installer-provided media tools once at import time.  The GUI and
+# every download worker inherit this PATH, and yt-dlp receives ffmpeg_location.
+_LOCAL_FFMPEG_DIR = ensure_local_ffmpeg_on_path()
+
+
 def get_default_download_dir() -> Path:
     """Returns Videos/Yt-RivoGUI directory in user's home directory."""
     videos_dir = Path.home() / 'Videos'
@@ -219,6 +269,8 @@ class YtDLBackend:
             'fragment_retries': 10,
             'remote_components': ['ejs:github'],
         }
+        if _LOCAL_FFMPEG_DIR:
+            opts['ffmpeg_location'] = _LOCAL_FFMPEG_DIR
 
         postprocessors: list[dict[str, Any]] = []
 
@@ -392,7 +444,7 @@ class YtDLBackend:
         if not video_path.exists():
             return
         temp_path = video_path.with_name(f'{video_path.stem}.tmp_muted{video_path.suffix}')
-        cmd = ['ffmpeg', '-y', '-i', str(video_path), '-c:v', 'copy', '-an', str(temp_path)]
+        cmd = [get_ffmpeg_executable(), '-y', '-i', str(video_path), '-c:v', 'copy', '-an', str(temp_path)]
         try:
             res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             if res.returncode == 0 and temp_path.exists():

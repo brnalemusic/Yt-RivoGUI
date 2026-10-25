@@ -2,13 +2,30 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from app.backend import DownloadOptions, YtDLBackend
+from app import backend as backend_module
+from app.backend import (
+    DownloadOptions,
+    YtDLBackend,
+    ensure_local_ffmpeg_on_path,
+    get_ffmpeg_executable,
+)
 from app.i18n import TRANSLATIONS, I18nManager
+
+
+def _create_fake_media_tools(bin_dir: Path) -> tuple[Path, Path]:
+    suffix = '.exe' if os.name == 'nt' else ''
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    ffmpeg = bin_dir / f'ffmpeg{suffix}'
+    ffprobe = bin_dir / f'ffprobe{suffix}'
+    ffmpeg.write_bytes(b'fake-ffmpeg')
+    ffprobe.write_bytes(b'fake-ffprobe')
+    return ffmpeg, ffprobe
 
 
 def test_i18n_translation_keys_parity():
@@ -43,6 +60,61 @@ def test_i18n_manager_switching():
     assert i18n('mode_split') == 'vídeo + áudio (separados)'
     i18n.set_language('en_US')
     assert i18n('mode_split') == 'video + audio (separated)'
+
+
+def test_local_ffmpeg_detection_prepends_bin_to_path(tmp_path, monkeypatch):
+    """The installer-provided bin folder must win over whatever is already on PATH."""
+    bin_dir = tmp_path / 'bin'
+    ffmpeg, _ = _create_fake_media_tools(bin_dir)
+    monkeypatch.setenv('PATH', 'C:\\Windows\\System32' if os.name == 'nt' else '/usr/bin')
+
+    assert ensure_local_ffmpeg_on_path(bin_dir) == str(bin_dir)
+    assert os.environ['PATH'].split(os.pathsep)[0] == str(bin_dir)
+    assert get_ffmpeg_executable(bin_dir) == str(ffmpeg)
+
+    # Re-running the helper must not duplicate the PATH entry.
+    ensure_local_ffmpeg_on_path(bin_dir)
+    entries = [entry for entry in os.environ['PATH'].split(os.pathsep)
+               if os.path.normcase(entry) == os.path.normcase(str(bin_dir))]
+    assert entries == [str(bin_dir)]
+
+
+def test_app_bin_dir_uses_executable_location_when_frozen(tmp_path, monkeypatch):
+    exe = tmp_path / ('Yt-RivoGUI.exe' if os.name == 'nt' else 'Yt-RivoGUI')
+    exe.write_bytes(b'')
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(exe))
+
+    assert backend_module.get_app_bin_dir() == tmp_path / 'bin'
+
+
+def test_local_ffmpeg_detection_requires_both_binaries(tmp_path):
+    """A lone ffmpeg.exe is not enough to advertise the local tools directory."""
+    bin_dir = tmp_path / 'bin'
+    bin_dir.mkdir()
+    ffmpeg = bin_dir / ('ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')
+    ffmpeg.write_bytes(b'fake')
+
+    assert ensure_local_ffmpeg_on_path(bin_dir) is None
+    assert get_ffmpeg_executable(bin_dir) == str(ffmpeg)
+
+
+def test_backend_passes_local_ffmpeg_location(tmp_path, monkeypatch):
+    bin_dir = tmp_path / 'bin'
+    _create_fake_media_tools(bin_dir)
+    monkeypatch.setattr(backend_module, '_LOCAL_FFMPEG_DIR', str(bin_dir))
+
+    opts = YtDLBackend().build_ydl_options(DownloadOptions())
+
+    assert opts['ffmpeg_location'] == str(bin_dir)
+
+
+def test_backend_omits_ffmpeg_location_without_local_tools(monkeypatch):
+    monkeypatch.setattr(backend_module, '_LOCAL_FFMPEG_DIR', None)
+
+    opts = YtDLBackend().build_ydl_options(DownloadOptions())
+
+    assert 'ffmpeg_location' not in opts
 
 
 def test_backend_wav_audio_options():

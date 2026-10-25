@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import functools
 import hashlib
+import http.server
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -136,6 +139,14 @@ def _verify_zip(dist_path: Path, version: str) -> bool:
             if required not in names:
                 print(f'[test_build] ERROR: {zip_path.name} does not contain {required}', file=sys.stderr)
                 return False
+        lowered = {name.lower() for name in names}
+        for media_tool in ('ffmpeg.exe', 'ffprobe.exe'):
+            if media_tool in lowered:
+                print(
+                    f'[test_build] ERROR: {zip_path.name} must not bundle {media_tool}',
+                    file=sys.stderr,
+                )
+                return False
         bad = archive.testzip()
         if bad:
             print(f'[test_build] ERROR: corrupt member in {zip_path.name}: {bad}', file=sys.stderr)
@@ -210,6 +221,48 @@ def _installed_version() -> str | None:
         return None
 
 
+def _create_synthetic_ffmpeg_archive(workspace: Path) -> Path | None:
+    """Builds a tiny 7z with fake media tools for an offline installer smoke test.
+
+    Windows ships bsdtar, which can write 7zip archives.  Using it keeps the
+    smoke test independent from gyan.dev while still exercising the installer's
+    download, SHA-256 verification, extraction and copy pipeline.
+    """
+    tar = shutil.which('tar')
+    if sys.platform != 'win32' or not tar:
+        return None
+
+    source = workspace / 'ffmpeg-archive' / 'ffmpeg-test-essentials_build' / 'bin'
+    source.mkdir(parents=True)
+    (source / 'ffmpeg.exe').write_bytes(b'fake-ffmpeg')
+    (source / 'ffprobe.exe').write_bytes(b'fake-ffprobe')
+
+    archive = workspace / 'ffmpeg-test-essentials.7z'
+    proc = subprocess.run(
+        [tar, '-cf', str(archive), '--format', '7zip', 'ffmpeg-test-essentials_build'],
+        cwd=source.parent.parent,
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 or not archive.is_file():
+        print(f'[test_build] Notice: could not create synthetic ffmpeg archive: {proc.stderr.strip()}')
+        return None
+    return archive
+
+
+def _serve_ffmpeg_archive(directory: Path) -> tuple[http.server.ThreadingHTTPServer, str]:
+    """Serves the synthetic archive and its checksum over loopback HTTP."""
+    class QuietHandler(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:
+            pass
+
+    handler = functools.partial(QuietHandler, directory=str(directory))
+    server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, f'http://127.0.0.1:{server.server_address[1]}'
+
+
 def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
     if sys.platform != 'win32':
         print('[test_build] Notice: install smoke test is Windows-only')
@@ -226,7 +279,28 @@ def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
     uninstall_log = workspace / 'uninstall.log'
     app_path = install_dir / EXE_NAME
     uninstaller = install_dir / 'unins000.exe'
+    server = None
     try:
+        installer_env = os.environ.copy()
+        for key in ('YTRIVO_FFMPEG_URL', 'YTRIVO_FFMPEG_CHECKSUM_URL',
+                    'YTRIVO_FFMPEG_SHA256', 'YTRIVO_FFMPEG_FORCE', 'YTRIVO_SKIP_FFMPEG'):
+            installer_env.pop(key, None)
+
+        archive = _create_synthetic_ffmpeg_archive(workspace)
+        verify_media_tools = archive is not None
+        if archive is not None:
+            checksum = compute_sha256(archive)
+            sidecar = archive.with_name(f'{archive.name}.sha256')
+            sidecar.write_text(checksum + '\n', encoding='ascii')
+            server, base_url = _serve_ffmpeg_archive(archive.parent)
+            installer_env['YTRIVO_FFMPEG_URL'] = f'{base_url}/{archive.name}'
+            installer_env['YTRIVO_FFMPEG_CHECKSUM_URL'] = f'{base_url}/{sidecar.name}'
+            installer_env['YTRIVO_FFMPEG_FORCE'] = '1'
+            print('[test_build] Installer media tools will be verified with a local test archive')
+        else:
+            installer_env['YTRIVO_SKIP_FFMPEG'] = '1'
+            print('[test_build] Notice: ffmpeg installer smoke test skipped (no 7z archive support)')
+
         print(f'[test_build] Silent install smoke test -> {install_dir}')
         proc = subprocess.run(
             [
@@ -240,6 +314,7 @@ def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
                 f'/DIR={install_dir}',
                 f'/LOG={install_log}',
             ],
+            env=installer_env,
             timeout=240,
         )
         if proc.returncode != 0:
@@ -248,6 +323,17 @@ def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
         if not app_path.is_file():
             print(f'[test_build] ERROR: installed executable missing: {app_path}', file=sys.stderr)
             return False
+
+        if verify_media_tools:
+            for name, expected_bytes in (('ffmpeg.exe', b'fake-ffmpeg'), ('ffprobe.exe', b'fake-ffprobe')):
+                media_path = install_dir / 'bin' / name
+                if not media_path.is_file():
+                    print(f'[test_build] ERROR: installed media tool missing: {media_path}', file=sys.stderr)
+                    return False
+                if media_path.read_bytes() != expected_bytes:
+                    print(f'[test_build] ERROR: unexpected contents for {name}', file=sys.stderr)
+                    return False
+            print('[test_build] Installer media tools verified: ffmpeg.exe, ffprobe.exe')
 
         # The installer must deploy the exact executable that was verified above.
         # Running the installed copy here would make the test depend on antivirus
@@ -269,6 +355,42 @@ def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
             print('[test_build] ERROR: uninstaller missing', file=sys.stderr)
             return False
 
+        if verify_media_tools:
+            skip_log = workspace / 'install-skip.log'
+            skip_env = installer_env.copy()
+            skip_env.pop('YTRIVO_FFMPEG_FORCE', None)
+            skip_env.pop('YTRIVO_SKIP_FFMPEG', None)
+            skip_env['YTRIVO_FFMPEG_URL'] = 'http://127.0.0.1:1/ffmpeg-must-not-be-downloaded.7z'
+            skip_env['YTRIVO_FFMPEG_CHECKSUM_URL'] = 'http://127.0.0.1:1/ffmpeg-must-not-be-downloaded.7z.sha256'
+            print('[test_build] Re-running the installer to verify existing media tools are reused')
+            proc = subprocess.run(
+                [
+                    str(installer),
+                    '/VERYSILENT',
+                    '/SUPPRESSMSGBOXES',
+                    '/NORESTART',
+                    '/NOCANCEL',
+                    '/CLOSEAPPLICATIONS',
+                    '/NOICONS',
+                    f'/DIR={install_dir}',
+                    f'/LOG={skip_log}',
+                ],
+                env=skip_env,
+                timeout=240,
+            )
+            if proc.returncode != 0:
+                print(f'[test_build] ERROR: skip-path installer exited with {proc.returncode}', file=sys.stderr)
+                return False
+            log_text = skip_log.read_text(encoding='utf-8-sig', errors='replace') if skip_log.is_file() else ''
+            if 'ffmpeg: found in' not in log_text:
+                print('[test_build] ERROR: installer did not reuse the existing media tools', file=sys.stderr)
+                return False
+            for name, expected_bytes in (('ffmpeg.exe', b'fake-ffmpeg'), ('ffprobe.exe', b'fake-ffprobe')):
+                if (install_dir / 'bin' / name).read_bytes() != expected_bytes:
+                    print(f'[test_build] ERROR: media tool changed during the skip install: {name}', file=sys.stderr)
+                    return False
+            print('[test_build] Installer reused the existing media tools without downloading')
+
         print('[test_build] Silent uninstall smoke test')
         proc = subprocess.run(
             [
@@ -278,6 +400,7 @@ def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
                 '/NORESTART',
                 f'/LOG={uninstall_log}',
             ],
+            env=installer_env,
             timeout=240,
         )
         if proc.returncode != 0:
@@ -300,6 +423,9 @@ def _smoke_install(installer: Path, version: str, expected_exe: Path) -> bool:
         print(f'[test_build] ERROR during install smoke test: {exc}', file=sys.stderr)
         return False
     finally:
+        if server is not None:
+            server.shutdown()
+            server.server_close()
         shutil.rmtree(workspace, ignore_errors=True)
 
 

@@ -70,6 +70,7 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
   - Houses `DownloadOptions`, `ProgressInfo`, and `YtDLBackend`.
   - Configures download pipelines, format selection, output templates, and FFmpeg postprocessors (`FFmpegExtractAudio`, `FFmpegMetadata`, `FFmpegEmbedSubtitle`, `EmbedThumbnail`).
   - Implements modes: `video`, `audio`, `split` (video + audio separated), and `thumbnail_only`.
+  - Detects installer-provided media tools in `<exe dir>\bin` (or `<repo>\bin` for source checkouts), prepends that folder to `PATH`, passes it to yt-dlp as `ffmpeg_location`, and uses the local binary for `_strip_audio`.
 - **`app/gui.py`**:
   - PySide6 desktop interface.
   - Uses `MINIMAL_MONO_STYLESHEET` for consistent dark monospace styling.
@@ -87,11 +88,13 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
   - OS-level language detection (`detect_system_language()`).
 - **`installer/`**:
   - `Yt-RivoGUI.iss` builds the branded per-user Inno Setup installer (`PrivilegesRequired=lowest`, fixed `AppId=Yt-RivoGUI`, uninstall key `Yt-RivoGUI_is1`).
+  - When `ffmpeg.exe` and `ffprobe.exe` are absent from `{app}\bin` and `PATH`, the installer downloads the official gyan.dev ffmpeg essentials `.7z` during the download stage, fetches its SHA-256 sidecar, verifies the archive, extracts only both executables into `{app}\bin`, and removes that folder on uninstall. Failures, cancelled downloads and offline installs log and continue; installation never depends on the download.
+  - The download honours `YTRIVO_FFMPEG_URL`, `YTRIVO_FFMPEG_CHECKSUM_URL`, `YTRIVO_FFMPEG_SHA256`, `YTRIVO_FFMPEG_FORCE=1` and `YTRIVO_SKIP_FFMPEG=1` for offline testing.
   - `assets/` holds generated wizard artwork; regenerate it with `devscripts/make_installer_assets.py`.
 - **`devscripts/`**:
   - `build_gui.py` runs PyInstaller, creates the portable zip, compiles the installer, and writes `latest.json` plus `SHA256SUMS.txt`.
   - `make_update_manifest.py` and `generate_release_hashes.py` own the release checksum/manifest format.
-  - `test_build.py` verifies the executable, zip, installer, manifest and (with `--install-smoke`) a real silent install/uninstall.
+  - `test_build.py` verifies the executable, zip, installer, manifest and (with `--install-smoke`) a real silent install/uninstall. The smoke test serves a synthetic `.7z` over loopback HTTP to verify download, SHA-256 checking, extraction, `{app}\bin` placement, reuse on a second run and uninstall cleanup offline.
 - **`test/`**:
   - Automated test suite covering versioning, backend options, media stream processing, translation parity, the update engine, and the update UI.
 - **`.github/workflows/`**:
@@ -124,17 +127,20 @@ python devscripts/build_gui.py --require-installer
 # 5. Verify the exe, zip, installer and latest.json
 python devscripts/test_build.py
 
-# 6. Optional but recommended: real silent install/uninstall in a temp folder
+# 6. Optional but recommended: real silent install/uninstall in a temp folder,
+#    including a synthetic ffmpeg download/extraction check over loopback
 python devscripts/test_build.py --install-smoke
 ```
 
 Inno Setup 6.7+ is required for step 4. `build_gui.py` finds `ISCC.exe` on `PATH`, via `INNO_SETUP_COMPILER` / `ISCC`, or in the default installation folders.
 
+To verify the real gyan.dev download manually, run the built installer silently with `YTRIVO_FFMPEG_FORCE=1` and confirm `{app}\bin\ffmpeg.exe` and `{app}\bin\ffprobe.exe` exist before uninstalling. Never treat the live download as a required CI step.
+
 ---
 
 ## 8. Release & Update Invariants
 
-- **Distribution model**: keep the branded per-user installer (no UAC) and the portable `.exe` / `.zip` side by side. `ffmpeg` and `ffprobe` remain external on `PATH`; never bundle them.
+- **Distribution model**: keep the branded per-user installer (no UAC) and the portable `.exe` / `.zip` side by side. `ffmpeg` and `ffprobe` are never bundled in build artifacts. The installer may download the official gyan.dev build into `{app}\bin` at install time after verifying its SHA-256; skip when both tools already exist in `{app}\bin` or on `PATH`, and never abort the install when the download fails.
 - **Release tags**: stable releases use the plain four-part version (`0.0.4.0`, no `v` prefix). `latest.json` asset URLs and the updater are generated from that tag.
 - **Release assets**: `Yt-RivoGUI-Setup-v<version>.exe`, `Yt-RivoGUI.exe`, `Yt-RivoGUI-v<version>-windows.zip`, `SHA256SUMS.txt`, `latest.json`.
 - **Checksum policy**: `SHA256SUMS.txt` excludes `latest.json` and itself. `latest.json` carries the checksum of `SHA256SUMS.txt` plus the size and SHA-256 of every installable asset. Never weaken the rule that an asset without a valid checksum must not be executed.

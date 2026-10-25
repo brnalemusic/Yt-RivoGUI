@@ -42,6 +42,7 @@
   - american english (`en_US`) on all other system locales.
   - real-time live language switcher directly in the interface header.
 - **branded windows installer**: per-user installation with no uac prompt, custom dark emerald artwork, start menu integration and a clean uninstaller.
+- **automatic media tool provisioning**: the installer downloads the official ffmpeg essentials build for windows (about 34 mb) when `ffmpeg` and `ffprobe` are missing, verifies its sha-256 and installs both into the app's `bin` folder.
 - **verified automatic updates**: stable-channel update checks with sha-256 verification, a one-click update banner, and safe installed/portable update paths.
 - **youtube js challenge solving**: built-in integration with `yt-dlp-ejs` to overcome recent youtube sabr/n-challenge restrictions and prevent connection timeouts (error -138).
 - **automatic post-processing**:
@@ -63,9 +64,10 @@
 
 1. download `Yt-RivoGUI-Setup-v0.0.4.0.exe` from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. run the installer. it installs per user into `%LOCALAPPDATA%\Programs\Yt-RivoGUI` and does **not** require administrator rights (no uac prompt).
-3. launch `yt-rivogui` from the start menu. setup also offers an optional desktop shortcut.
+3. when `ffmpeg` and `ffprobe` are not already installed, setup downloads the official [ffmpeg essentials build](https://www.gyan.dev/ffmpeg/builds/) (about 34 mb), verifies its sha-256 digest and installs both tools into the app's `bin` folder. the download is skipped when both tools are already available, and setup continues normally when it fails (for example while offline).
+4. launch `yt-rivogui` from the start menu. setup also offers an optional desktop shortcut.
 
-the installer registers the app in windows settings, so it can be removed from there at any time. installed builds update themselves automatically from github releases.
+the installer registers the app in windows settings, so it can be removed from there at any time. the uninstaller also removes the app's `bin` folder with the downloaded media tools. installed builds update themselves automatically from github releases.
 
 ### option b: portable release
 
@@ -75,7 +77,7 @@ the installer registers the app in windows settings, so it can be removed from t
    from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required. portable builds also update themselves in place.
 
-> **tip**: `ffmpeg` and `ffprobe` are not bundled. install [ffmpeg](https://ffmpeg.org/download.html) and add it to your system `PATH` for video remuxing, subtitle embedding, and audio extraction.
+> **tip**: `ffmpeg` and `ffprobe` are never packaged inside the app or the installer. the windows installer downloads them on demand into the app's `bin` folder. portable builds use a `bin` folder next to the executable, and source checkouts use `<repo>\bin`; both are searched before your system `PATH`. install [ffmpeg](https://ffmpeg.org/download.html) if the automatic download is not available.
 
 ### option c: run from source
 
@@ -123,7 +125,7 @@ python -m app --no-update-check
 
 ## building the windows executable and installer
 
-the release pipeline uses pyinstaller for `Yt-RivoGUI.exe` and inno setup 6.7+ for the branded per-user installer.
+the release pipeline uses pyinstaller for `Yt-RivoGUI.exe` and inno setup 6.7+ for the branded per-user installer. `ffmpeg` and `ffprobe` are not bundled into any release artifact: the installer downloads the official windows build into `{app}\bin` at install time.
 
 prerequisites:
 
@@ -187,7 +189,7 @@ test-build.bat
 python devscripts/test_build.py
 ```
 
-add `--install-smoke` to perform a real silent install and uninstall in a temporary folder:
+add `--install-smoke` to perform a real silent install and uninstall in a temporary folder. the smoke test serves a tiny synthetic ffmpeg archive over loopback http, so it also verifies the installer's download, sha-256 check, extraction, reuse on a second run, and `bin` cleanup without using the network:
 
 ```bash
 python devscripts/test_build.py --install-smoke
