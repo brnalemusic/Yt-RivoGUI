@@ -65,6 +65,9 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
 
 ## 6. Codebase Architecture Overview
 
+- **`yt_dlp/`**:
+  - Vendored upstream yt-dlp engine, currently synchronized with the stable `2026.10.21` release (see section 9).
+  - Supplies extractors, networking, format selection, downloaders, and post-processors. Backend improvements from upstream are adopted here; GUI behavior belongs in `app/`.
 - **`app/backend.py`**:
   - Core embedded media downloader backend running yt-dlp technology natively in-process (not an external CLI wrapper; no separate yt-dlp installation needed).
   - Houses `DownloadOptions`, `ProgressInfo`, and `YtDLBackend`.
@@ -148,4 +151,23 @@ To verify the real gyan.dev download manually, run the built installer silently 
 - **Identity**: do not change `AppId=Yt-RivoGUI` or the uninstall registry key `Software\Microsoft\Windows\CurrentVersion\Uninstall\Yt-RivoGUI_is1`; the updater and the installer rely on them.
 - **Single instance**: the GUI owns the `Yt-RivoGUI.SingleInstance` mutex. The Inno script uses the same `AppMutex`, and the silent updater passes `/CLOSEAPPLICATIONS`. Keep `--allow-multiple` available for development.
 - **Updater logging and errors**: every new update state, error code, or log line must exist in both `pt_BR` and `en_US`, in lowercase, and be covered by `test/test_update_ui.py` or `test/test_updater.py`.
+
+---
+
+## 9. Upstream Synchronization Policy (yt-dlp → Yt-RivoGUI)
+
+- **What upstream is**: Yt-RivoGUI embeds and extends the yt-dlp engine. yt-dlp is deliberately a command-line tool; Yt-RivoGUI is its graphical edition. Never reduce the GUI to a thin CLI wrapper or replace RivoGUI behavior with upstream CLI behavior.
+- **What to adopt**: adopt only new technologies and real improvements involving yt-dlp (extractors, networking, download pipeline, post-processors, security/dependency fixes, and runtime compatibility). Avoid merges with extraordinary conflicts; prefer small, reviewable syncs.
+- **Conflict priority**: RivoGUI technology always wins. When resolving a merge or loading the upstream, prioritize our improved or invented technologies. From upstream, keep only real improvements and new backend technology relevant to the dlp engine.
+- **Interesting new technology**: if upstream adds a very interesting technology, adapt it from the CLI model to the GUI model, document it in `README.md`, and report it to the maintainer at the end of the task. This is explicitly encouraged.
+
+### operational protocol
+
+1. Run `git fetch upstream --tags --prune` and compare `HEAD...upstream/master`; record the upstream release or tag being adopted.
+2. Inspect conflicts with `git merge-tree` or start a `git merge --no-commit --no-ff upstream/master`. Never commit or push (section 1).
+3. Keep RivoGUI-owned files (`app/`, `installer/`, GUI workflows, `README.md`, `AGENTS.md`, translations, and the update engine) on our side. Take upstream for `yt_dlp/` and backend tooling unless it breaks the GUI.
+4. Preserve the RivoGUI version in `yt_dlp/version.py`; never replace it with yt-dlp's date-based version.
+5. Resolve every conflict by inspecting both sides; do not accept an upstream hunk blindly when it touches a RivoGUI-owned behavior.
+6. Run the full verification protocol (section 7) plus `pytest devscripts/setup_variables_tests.py`.
+7. Update the upstream synchronization section in `README.md` with the synced release and the adopted technology, then report the same summary to the maintainer.
 

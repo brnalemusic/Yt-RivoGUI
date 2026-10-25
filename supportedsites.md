@@ -625,8 +625,10 @@ The only reliable way to check if a site is supported is to try it.
  - **Kenh14Video**
  - **khanacademy**
  - **khanacademy:unit**
+ - **kick:clip**
  - **kick:clips**
  - **kick:live**
+ - **kick:videos**
  - **kick:vod**
  - **Kicker**
  - **KickStarter**

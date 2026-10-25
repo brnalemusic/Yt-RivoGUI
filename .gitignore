@@ -110,12 +110,18 @@ test/testdata/thumbnails/empty.webp
 test/testdata/thumbnails/foo\ %d\ bar/foo_%d.*
 .ejs-*
 
+# Generated installer wizard artwork (devscripts/make_installer_assets.py)
+installer/assets/
+
 # Binary
 /youtube-dl
 /youtube-dlc
 /yt-dlp
 yt-dlp.zip
 *.exe
+
+# Local media tools (ffmpeg/ffprobe provisioning for source checkouts)
+/bin/
 
 # Text Editor / IDE
 .idea
@@ -124,6 +130,10 @@ yt-dlp.zip
 *.sublime-*
 *.code-workspace
 *.swp
+
+# Agent tooling state and worktrees
+.kilo/
+.kilocode/
 
 # Lazy extractors
 */extractor/lazy_extractors.py

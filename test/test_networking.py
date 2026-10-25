@@ -180,6 +180,11 @@ class HTTPTestRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header('Location', '/a/b/./../../headers')
             self.send_header('Content-Length', '0')
             self.end_headers()
+        elif self.path == '/a/b/redirect_relative_dotsegments':
+            self.send_response(301)
+            self.send_header('Location', '../../headers')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
         elif self.path == '/redirect_dotsegments_absolute':
             self.send_response(301)
             # redirect to /headers but with dot segments before - absolute url
@@ -412,6 +417,7 @@ class TestHTTPRequestHandler(TestRequestHandlerBase):
     @pytest.mark.parametrize('path', [
         '/a/b/./../../headers',
         '/redirect_dotsegments',
+        '/a/b/redirect_relative_dotsegments',
         # https://github.com/yt-dlp/yt-dlp/issues/9020
         '/redirect_dotsegments_absolute',
     ])
@@ -1677,8 +1683,7 @@ class TestYoutubeDLNetworking:
 
     def test_compat_opener(self):
         with FakeYDL() as ydl:
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', category=DeprecationWarning)
+            with warnings.catch_warnings(action='ignore', category=DeprecationWarning):
                 assert isinstance(ydl._opener, urllib.request.OpenerDirector)
 
     @pytest.mark.parametrize('proxy,expected', [
@@ -1697,8 +1702,7 @@ class TestYoutubeDLNetworking:
             urllib_req = urllib.request.Request('http://foo.bar', data=b'test', method='PUT', headers={'X-Test': '1'})
             urllib_req.add_unredirected_header('Cookie', 'bob=bob')
             urllib_req.timeout = 2
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', category=DeprecationWarning)
+            with warnings.catch_warnings(action='ignore', category=DeprecationWarning):
                 req = ydl.urlopen(urllib_req).request
                 assert req.url == urllib_req.get_full_url()
                 assert req.data == urllib_req.data
@@ -2117,8 +2121,7 @@ class TestResponse:
 
     def test_compat(self):
         res = Response(io.BytesIO(b''), url='test://', status=404, headers={'test': 'test'})
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore', category=DeprecationWarning)
+        with warnings.catch_warnings(action='ignore', category=DeprecationWarning):
             assert res.code == res.getcode() == res.status
             assert res.geturl() == res.url
             assert res.info() is res.headers

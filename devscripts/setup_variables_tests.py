@@ -3,7 +3,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import datetime as dt
 import json
 
 from devscripts.setup_variables import STABLE_REPOSITORY, process_inputs, setup_variables
@@ -60,8 +59,9 @@ def _test(github_repository, note, repo_vars, repo_secrets, inputs, expected, ig
 
 
 def test_setup_variables():
-    DEFAULT_VERSION_WITH_REVISION = dt.datetime.now(tz=dt.timezone.utc).strftime('%Y.%m.%d.%H%M%S')
     DEFAULT_VERSION = calculate_version()
+    # Yt-RivoGUI never generates date-based or revision-suffixed versions.
+    DEFAULT_VERSION_WITH_REVISION = DEFAULT_VERSION
     BASE_REPO_VARS = {
         'MASTER_ARCHIVE_REPO': 'yt-dlp/yt-dlp-master-builds',
         'NIGHTLY_ARCHIVE_REPO': 'yt-dlp/yt-dlp-nightly-builds',
@@ -219,9 +219,9 @@ def test_setup_variables():
         FORK_REPOSITORY, 'fork w/o vars/secrets, revision',
         {}, {}, {'version': '123'}, {
             'channel': FORK_REPOSITORY,
-            'version': f'{DEFAULT_VERSION[:10]}.123',
+            'version': '123',
             'target_repo': FORK_REPOSITORY,
-            'target_tag': f'{DEFAULT_VERSION[:10]}.123',
+            'target_tag': '123',
             'pypi_project': None,
             'pypi_suffix': None,
         })
