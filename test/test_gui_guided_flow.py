@@ -111,20 +111,94 @@ def test_download_finished_offers_open_and_new_download():
         window.deleteLater()
 
 
-def test_drawer_opens_and_closes_deterministically():
+def test_drawer_starts_hidden_and_first_click_opens():
     window, _, _, _ = _make_window()
     try:
-        window._open_drawer()
+        # regression: a visible drawer at startup paints as a broken strip in
+        # the top-left corner and eats the first hamburger click
+        assert window.drawer.isHidden()
+        assert window.drawer_overlay.isHidden()
+        assert not window._drawer_open
+
+        window._toggle_drawer()
         assert not window.drawer.isHidden()
         assert not window.drawer_overlay.isHidden()
+        assert window._drawer_open
+
+        window._toggle_drawer()
+        assert not window._drawer_open
 
         # deterministic close: force the final animation state
-        window._close_drawer()
         window._drawer_animation.stop()
         window.drawer.move(window._drawer_animation.endValue())
         window._on_drawer_animation_finished()
         assert window.drawer.isHidden()
         assert window.drawer_overlay.isHidden()
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_paste_icon_prefills_without_continuing(monkeypatch):
+    window, home, _, _ = _make_window()
+    try:
+        target = 'https://example.com/watch?v=abc'
+
+        class _FakeClipboard:
+            def text(self):
+                return target
+
+        monkeypatch.setattr('app.gui.QApplication.clipboard', lambda: _FakeClipboard())
+
+        window.btn_paste.click()
+        assert window.url_input.text() == target
+        assert window.stack.currentIndex() == home
+        assert not window._preview_loading
+        assert window.btn_continue.isEnabled()
+        # paste never starts the metadata preview on its own
+        assert window.last_fetched_url == ''
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_continue_waits_in_loading_state_for_the_preview(monkeypatch):
+    window, home, configure, _ = _make_window()
+    try:
+        calls = []
+        monkeypatch.setattr(window, '_fetch_metadata', lambda url=None: calls.append(url))
+
+        window.url_input.setText('https://example.com/watch?v=abc')
+        assert window.btn_continue.text() == 'continuar'
+        assert window.btn_continue.isEnabled()
+
+        window.btn_continue.click()
+        assert calls == ['https://example.com/watch?v=abc']
+        assert window.stack.currentIndex() == home
+        assert window._preview_loading
+        assert not window.btn_continue.isEnabled()
+        assert window.btn_continue.text().startswith('carregando')
+        assert window.hero_hint_label.text() == 'obtendo metadados...'
+
+        # the loading state is cleared only when the preview arrives
+        window._on_metadata_ready({'title': 'video teste'}, None)
+        assert window.stack.currentIndex() == configure
+        assert not window._preview_loading
+        assert window.btn_continue.text() == 'continuar'
+        assert window.hero_hint_label.text() == 'cole um link de vídeo ou playlist para começar'
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_continue_rejects_invalid_links():
+    window, home, _, _ = _make_window()
+    try:
+        window.url_input.setText('não é uma url')
+        assert not window.btn_continue.isEnabled()
+        window._continue_to_preview()
+        assert window.stack.currentIndex() == home
+        assert window.hero_hint_label.text() == 'cole um link de vídeo ou playlist válido para continuar'
     finally:
         window.close()
         window.deleteLater()

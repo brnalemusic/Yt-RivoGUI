@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 
 try:
     from PySide6.QtCore import (
-        Qt, QThread, Signal, Slot, QTimer, QUrl, QPoint,
+        Qt, QThread, Signal, Slot, QTimer, QUrl, QPoint, QEvent,
         QPropertyAnimation, QEasingCurve,
     )
     from PySide6.QtGui import (
@@ -334,13 +334,20 @@ class MainWindow(QMainWindow):
         self.output_dir = str(get_default_download_dir())
         self.download_thread: DownloadWorker | None = None
         self.metadata_thread: MetadataWorker | None = None
-        self.debounce_timer = QTimer(self)
-        self.debounce_timer.setSingleShot(True)
-        self.debounce_timer.timeout.connect(self._fetch_metadata)
         self.last_fetched_url = ''
         self.last_downloaded_file = ''
         self._phase = PHASE_HOME
         self._playlist_count = 0
+
+        # metadata preview loading state (continue button waits for it)
+        self._preview_loading = False
+        self._loading_dots = 0
+        self._loading_timer = QTimer(self)
+        self._loading_timer.setInterval(280)
+        self._loading_timer.timeout.connect(self._tick_loading)
+
+        # drawer (hamburger sidebar) open state
+        self._drawer_open = False
 
         # Update state
         self._allow_update_check = allow_update_check
@@ -567,24 +574,46 @@ class MainWindow(QMainWindow):
 
         layout.addSpacing(14)
 
-        # One big paste button + one text box: the entire home screen.
+        # One text box with an inline paste icon + one continue button.
         url_row = QHBoxLayout()
         url_row.setSpacing(8)
+
+        self.url_shell = QFrame()
+        self.url_shell.setObjectName('UrlShell')
+        self.url_shell.setProperty('focused', False)
+        shell_layout = QHBoxLayout(self.url_shell)
+        shell_layout.setContentsMargins(4, 2, 6, 2)
+        shell_layout.setSpacing(2)
 
         self.url_input = QLineEdit()
         self.url_input.setObjectName('UrlInput')
         self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
         self.url_input.setClearButtonEnabled(True)
         self.url_input.textChanged.connect(self._on_url_text_changed)
-        self.url_input.returnPressed.connect(self._fetch_metadata_now)
-        url_row.addWidget(self.url_input, 1)
+        self.url_input.returnPressed.connect(self._continue_to_preview)
+        self.url_input.installEventFilter(self)
+        shell_layout.addWidget(self.url_input, 1)
 
-        self.btn_paste = QPushButton(self.i18n('paste_button').lower())
-        self.btn_paste.setObjectName('PrimaryButton')
-        self.btn_paste.setProperty('big', True)
+        # simple paste icon inside the input box: prefills only, never continues
+        self.btn_paste = QPushButton('📋')
+        self.btn_paste.setObjectName('PasteIconButton')
+        self.btn_paste.setToolTip(self.i18n('paste_button').lower())
         self.btn_paste.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_paste.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_paste.setFixedSize(28, 28)
         self.btn_paste.clicked.connect(self._paste_clipboard)
-        url_row.addWidget(self.btn_paste)
+        shell_layout.addWidget(self.btn_paste, 0, Qt.AlignmentFlag.AlignVCenter)
+
+        url_row.addWidget(self.url_shell, 1)
+
+        self.btn_continue = QPushButton(self.i18n('continue_button').lower())
+        self.btn_continue.setObjectName('PrimaryButton')
+        self.btn_continue.setProperty('big', True)
+        self.btn_continue.setMinimumWidth(132)
+        self.btn_continue.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_continue.setEnabled(False)
+        self.btn_continue.clicked.connect(self._continue_to_preview)
+        url_row.addWidget(self.btn_continue)
         layout.addLayout(url_row)
 
         self.hero_hint_label = QLabel('')
@@ -961,7 +990,7 @@ class MainWindow(QMainWindow):
 
         self.drawer = QFrame(self)
         self.drawer.setObjectName('DrawerFrame')
-        self.drawer.setFixedWidth(264)
+        self.drawer.setFixedWidth(320)
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(28)
@@ -1066,6 +1095,11 @@ class MainWindow(QMainWindow):
         self._drawer_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._drawer_animation.finished.connect(self._on_drawer_animation_finished)
 
+        # The drawer is built with the window, so it must start hidden: otherwise
+        # it paints as a clipped strip in the top-left corner and the first
+        # hamburger click would be read as a "close".
+        self.drawer.setVisible(False)
+
     def _create_metric_widget(self, label_text: str, default_val: str, is_last: bool = False) -> QFrame:
         frame = QFrame()
         frame.setProperty('class', 'MetricBoxLast' if is_last else 'MetricBox')
@@ -1089,33 +1123,37 @@ class MainWindow(QMainWindow):
     # drawer behaviour
     # ------------------------------------------------------------------
     def _toggle_drawer(self) -> None:
-        if not self.drawer.isHidden():
+        if self._drawer_open:
             self._close_drawer()
         else:
             self._open_drawer()
 
     def _open_drawer(self) -> None:
+        self._drawer_open = True
         self.drawer_overlay.setGeometry(0, 0, self.width(), self.height())
         self.drawer.setGeometry(-self.drawer.width(), 0, self.drawer.width(), self.height())
         self.drawer_overlay.setVisible(True)
         self.drawer_overlay.raise_()
         self.drawer.setVisible(True)
         self.drawer.raise_()
+        self.drawer.layout().activate()
+        self._render_save_to()
         self._drawer_animation.stop()
         self._drawer_animation.setStartValue(QPoint(-self.drawer.width(), 0))
         self._drawer_animation.setEndValue(QPoint(0, 0))
         self._drawer_animation.start()
 
     def _close_drawer(self) -> None:
-        if self.drawer.isHidden():
+        if not self._drawer_open:
             return
+        self._drawer_open = False
         self._drawer_animation.stop()
         self._drawer_animation.setStartValue(self.drawer.pos())
         self._drawer_animation.setEndValue(QPoint(-self.drawer.width(), 0))
         self._drawer_animation.start()
 
     def _on_drawer_animation_finished(self) -> None:
-        if self.drawer.x() < 0:
+        if not self._drawer_open:
             self.drawer.setVisible(False)
             self.drawer_overlay.setVisible(False)
 
@@ -1166,7 +1204,9 @@ class MainWindow(QMainWindow):
         self.btn_save_to.setToolTip(full_text)
         if hasattr(self, 'btn_drawer_save'):
             drawer_metrics = QFontMetrics(self.btn_drawer_save.font())
-            drawer_elided = drawer_metrics.elidedText(full_text, Qt.TextElideMode.ElideMiddle, 200)
+            # elide against the real button width once the drawer is laid out
+            max_width = max(160, self.btn_drawer_save.width() - 28)
+            drawer_elided = drawer_metrics.elidedText(full_text, Qt.TextElideMode.ElideMiddle, max_width)
             self.btn_drawer_save.setText(drawer_elided)
             self.btn_drawer_save.setToolTip(full_text)
 
@@ -1225,8 +1265,13 @@ class MainWindow(QMainWindow):
         self.hero_title_label.setText(self.i18n('hero_title').lower())
         self.app_subtitle_label.setText(self.i18n('app_subtitle').lower())
         self.url_input.setPlaceholderText('🔗 ' + self.i18n('url_placeholder').lower())
-        self.btn_paste.setText(self.i18n('paste_button').lower())
-        self.hero_hint_label.setText(self.i18n('hero_hint').lower())
+        self.btn_paste.setToolTip(self.i18n('paste_button').lower())
+        if self._preview_loading:
+            self.btn_continue.setText(self._loading_label())
+            self.hero_hint_label.setText(self.i18n('preview_loading').lower())
+        else:
+            self.btn_continue.setText(self.i18n('continue_button').lower())
+            self.hero_hint_label.setText(self.i18n('hero_hint').lower())
         self._render_save_to()
         self._render_stepper()
 
@@ -1814,30 +1859,70 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def _on_url_text_changed(self, text: str) -> None:
         url = text.strip()
-        if not url or not (url.startswith('http://') or url.startswith('https://')):
-            self.debounce_timer.stop()
-            if not url:
-                self.preview_title.setText(self.i18n('preview_empty').lower())
-                self.preview_channel.setText('')
-                self.preview_duration.setText('')
-                self.preview_playlist_badge.setText('')
-                self.thumb_label.setPixmap(QPixmap())
-                self.thumb_label.setText('preview')
+        if self._preview_loading and url != self.last_fetched_url:
+            # the link changed while the preview was loading: drop the stale fetch
+            self._cancel_metadata()
+            self._set_preview_loading(False)
+
+        is_url = url.startswith(('http://', 'https://'))
+        self.btn_continue.setEnabled(is_url and not self._preview_loading)
+        if not url:
+            self._reset_preview()
+
+    def _reset_preview(self) -> None:
+        self.preview_title.setText(self.i18n('preview_empty').lower())
+        self.preview_channel.setText('')
+        self.preview_duration.setText('')
+        self.preview_playlist_badge.setText('')
+        self.thumb_label.setPixmap(QPixmap())
+        self.thumb_label.setText('preview')
+
+    def _loading_label(self) -> str:
+        base = self.i18n('continue_loading').lower().rstrip('.')
+        return f"{base}{'.' * self._loading_dots}"
+
+    def _set_preview_loading(self, loading: bool) -> None:
+        """Toggles the continue button into its waiting-for-preview state."""
+        self._preview_loading = loading
+        self.btn_continue.setProperty('loading', loading)
+        _repolish(self.btn_continue)
+        if loading:
+            self._loading_dots = 3
+            self.btn_continue.setText(self._loading_label())
+            self.btn_continue.setEnabled(False)
+            self.hero_hint_label.setText(self.i18n('preview_loading').lower())
+            self._loading_timer.start()
+        else:
+            self._loading_timer.stop()
+            self.btn_continue.setText(self.i18n('continue_button').lower())
+            self.btn_continue.setEnabled(
+                self.url_input.text().strip().startswith(('http://', 'https://'))
+            )
+            self.hero_hint_label.setText(self.i18n('hero_hint').lower())
+
+    def _tick_loading(self) -> None:
+        self._loading_dots = self._loading_dots % 3 + 1
+        self.btn_continue.setText(self._loading_label())
+
+    def _cancel_metadata(self) -> None:
+        if self.metadata_thread and self.metadata_thread.isRunning():
+            self.metadata_thread.cancel()
+
+    def _continue_to_preview(self) -> None:
+        """Continue button / Enter: fetches the preview and waits for it."""
+        url = self.url_input.text().strip()
+        if not url.startswith(('http://', 'https://')):
+            self.hero_hint_label.setText(self.i18n('url_invalid').lower())
+            self.url_input.setFocus()
             return
+        if self._preview_loading:
+            return
+        self._set_preview_loading(True)
+        self._fetch_metadata(url)
 
-        if url != self.last_fetched_url:
-            self.debounce_timer.stop()
-            self.debounce_timer.start(500)
-
-    def _fetch_metadata_now(self) -> None:
-        """Enter key on the url field: skip the debounce and fetch immediately."""
-        self.debounce_timer.stop()
-        url = self.url_input.text().strip()
-        if url:
-            self._fetch_metadata()
-
-    def _fetch_metadata(self) -> None:
-        url = self.url_input.text().strip()
+    def _fetch_metadata(self, url: str | None = None) -> None:
+        if url is None:
+            url = self.url_input.text().strip()
         if not url:
             return
 
@@ -1858,6 +1943,7 @@ class MainWindow(QMainWindow):
 
     @Slot(dict, object)
     def _on_metadata_ready(self, info: dict, pixmap: QPixmap | None) -> None:
+        self._set_preview_loading(False)
         self.preview_title.setText(info.get('title', ''))
         uploader = info.get('uploader', '')
         if uploader:
@@ -1899,15 +1985,18 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_metadata_failed(self, error: str) -> None:
+        self._set_preview_loading(False)
         self.preview_title.setText(self.i18n('preview_error').lower())
         self.log(f'[aviso preview] {clean_ansi(error)}')
         # keep the flow forgiving: the direct download may still work
         self._set_phase(PHASE_CONFIGURE)
 
     def _paste_clipboard(self) -> None:
+        """Inline paste icon: only pre-fills the field, never continues."""
         text = QApplication.clipboard().text()
-        if text:
+        if text.strip():
             self.url_input.setText(text.strip())
+            self.url_input.setFocus()
 
     def _prefill_from_clipboard(self) -> None:
         """Prefills the url field with a link found on the clipboard at startup."""
@@ -1926,15 +2015,11 @@ class MainWindow(QMainWindow):
             self.url_input.setText(text)
 
     def _clear_url(self) -> None:
+        self._set_preview_loading(False)
         self.url_input.clear()
         self.last_fetched_url = ''
         self._playlist_count = 0
-        self.preview_title.setText(self.i18n('preview_empty').lower())
-        self.preview_channel.setText('')
-        self.preview_duration.setText('')
-        self.preview_playlist_badge.setText('')
-        self.thumb_label.setPixmap(QPixmap())
-        self.thumb_label.setText('preview')
+        self._reset_preview()
 
     # ------------------------------------------------------------------
     # navigation between phases
@@ -2152,6 +2237,21 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     # drag & drop and key handling
     # ------------------------------------------------------------------
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802 (Qt naming)
+        """Mirrors the url input focus onto its shell frame."""
+        if obj is getattr(self, 'url_input', None):
+            if event.type() == QEvent.Type.FocusIn:
+                self._set_url_shell_focus(True)
+            elif event.type() == QEvent.Type.FocusOut:
+                self._set_url_shell_focus(False)
+        return super().eventFilter(obj, event)
+
+    def _set_url_shell_focus(self, focused: bool) -> None:
+        if not hasattr(self, 'url_shell'):
+            return
+        self.url_shell.setProperty('focused', focused)
+        _repolish(self.url_shell)
+
     def dragEnterEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         mime = event.mimeData()
         text = mime.text().strip() if mime.hasText() else ''

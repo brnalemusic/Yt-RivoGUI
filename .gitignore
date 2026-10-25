@@ -144,3 +144,7 @@ yt-dlp-plugins
 
 # Packages
 yt_dlp_ejs/
+
+# Test files and data
+.pytest_tmp/
+.pytest*/

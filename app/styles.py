@@ -76,18 +76,41 @@ QLineEdit:focus {
     border: 1px solid #238636;
     background-color: #0f141c;
 }
-QLineEdit#UrlInput {
+/* url shell: the input box frame, with a paste icon inside it */
+QFrame#UrlShell {
     background-color: #0d1117;
-    color: #f0f6fc;
     border: 1px solid #238636;
     border-radius: 8px;
-    padding: 10px 14px;
+}
+QFrame#UrlShell[focused='true'] {
+    border: 1px solid #34d399;
+    background-color: #0f141c;
+}
+QLineEdit#UrlInput {
+    background-color: transparent;
+    color: #f0f6fc;
+    border: none;
+    border-radius: 0px;
+    padding: 10px 4px 10px 10px;
     min-height: 22px;
     font-size: 13px;
 }
 QLineEdit#UrlInput:focus {
-    border: 1px solid #34d399;
-    background-color: #0f141c;
+    border: none;
+    background-color: transparent;
+}
+QPushButton#PasteIconButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+    font-size: 13px;
+}
+QPushButton#PasteIconButton:hover {
+    background-color: #161b22;
+}
+QPushButton#PasteIconButton:pressed {
+    background-color: #21262d;
 }
 
 /* COMBOBOX */
@@ -181,6 +204,11 @@ QPushButton#PrimaryButton:disabled {
 QPushButton#PrimaryButton[big='true'] {
     padding: 10px 26px;
     font-size: 13px;
+}
+QPushButton#PrimaryButton[loading='true'] {
+    background-color: #13251a;
+    border-color: #238636;
+    color: #34d399;
 }
 
 /* CANCEL BUTTON */
