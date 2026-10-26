@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0.1-10B981?style=flat-square" alt="Version 0.1.0.1" />
+  <img src="https://img.shields.io/badge/version-0.1.1.0-10B981?style=flat-square" alt="Version 0.1.1.0" />
   <img src="https://img.shields.io/badge/python-3.11%2B-22C55E?style=flat-square" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/framework-pyside6-34D399?style=flat-square" alt="PySide6" />
   <img src="https://img.shields.io/badge/platform-windows%20(10%20%2F%2011%20x64)-10B981?style=flat-square" alt="Platform" />
@@ -31,13 +31,15 @@
 - **100% lowercase & monospaced typography**: uniform lowercase visual aesthetic across all buttons, labels, and badges, paired with clean technical monospace fonts (`cascadia code`, `jetbrains mono`, `consolas`).
 - **guided three-phase download flow** (smart defaults first, complexity on demand):
   - **home**: a single hero screen with one url text box — carrying a small inline paste icon that only prefills the field — and a primary `continuar` button, plus a discreet `salvar em:` footer. `continuar` switches to a loading state (`carregando...` with a `obtendo metadados...` hint) and waits for that link's metadata preview before opening the settings phase. a link already sitting on the clipboard is detected and prefilled automatically at startup (never auto-continued), and media links can also be dragged onto the window.
-  - **settings**: the detected media preview (thumbnail, title, channel, duration, playlist badge), a thin `1 link · 2 ajustes · 3 download` stepper, segmented mode pills (`vídeo`, `áudio`, `vídeo + áudio (separados)`, `capa`), and collapsible accordion sections — `qualidade`, `codec áudio`, `playlist`, `extras` — each showing its current value as a summary (`melhor · mp4`, `mp3 · 320 kbps`, ...). everything starts collapsed: the `baixar agora` button applies the best defaults with zero extra steps.
+  - **settings**: the detected media preview (thumbnail, title, channel, duration, playlist badge), a thin `1 link · 2 ajustes · 3 download` stepper, segmented mode pills (`vídeo`, `áudio`, `vídeo + áudio (separados)`, `capa`), and collapsible accordion sections — `qualidade`, `áudio`, `playlist`, `extras` — each showing its current value as a summary (`melhor · mp4`, `melhor · máximo`, `mp3 · 320 kbps`, ...). everything starts collapsed: the `baixar agora` button applies the best defaults with zero extra steps.
   - **progress**: large progress bar with the 4-column telemetry grid (progress %, speed, eta, file size), cancel/openFolder actions, and `abrir arquivo` + `baixar outro` once finished; output stays forgiving when preview metadata cannot be fetched (the direct download still works).
 - **hamburger drawer (⚙ preferences sidebar)**: sliding 320 px overlay sidebar with downloads actions (`novo download`, `abrir pasta`), preferences (`salvar em:`, live language switcher, automatic update checks) and system entries (manual update check, activity logs), staying hidden until the hamburger opens it, animating in 190 ms and closing with `esc`, the hamburger, or a click outside.
 - **keyboard & clipboard**: `enter` on the url field behaves like `continuar` (same loading state, no typing debounce); the inline paste icon and the startup clipboard prefill never continue on their own; `esc` closes the drawer (or returns from settings to home).
-- **flexible media presets & codecs**:
-  - **video**: `best`, `4k (2160p)`, `1440p`, `1080p`, `720p`, `480p`, `360p` into `mp4` or `mkv` containers.
+- **flexible media presets & codecs (only what the media really offers)**:
+  - **video**: resolution, frame rate (`60`, `45`, `30`, `24`, `15 fps`), video bitrate, `h.264 (avc)` (default) or `h.265 (hevc)` codec, into `mp4` or `mkv` containers. every store is built from the detected streams: a 1080p upload lists no `4k`/`2k`, a 30 fps upload stops at `30 fps`, and bitrate caps are the real bitrates of the chosen resolution. only playlists — whose entries are not extracted one by one — fall back to the standard ladders, and a cap never upscales anything.
+  - **codec and frame rate semantics**: the codec is a preference among equally sized streams, so choosing `h.264` keeps a 4k upload at 4k (falling back to vp9/av1 when the site ships no h.264 there) instead of silently downgrading it to 1080p. the frame rate and bitrate are caps applied at the chosen resolution; when the site has no such rendition (e.g. a 60 fps upload has no 1080p 30 fps stream) the resolution is kept and the cap is relaxed rather than collapsing the download into a 144p rendition. changing the frame rate needs no re-encode: it selects the site's native lower-fps rendition.
   - **audio**: `mp3`, `m4a`, `flac`, `wav`, `opus` with selectable quality bitrates (`best`, `320k`, `256k`, `192k`, `128k`; `wav` is lossless `pcm`).
+  - **audio embedded in the video**: the `áudio` section is also available in `vídeo` mode and sets the bitrate and the sample rate of the audio merged into the video, limited to what the soundtrack carries — a `44.1 khz` audio never offers `48 khz`. these are stream selections (yt-dlp format filters such as `[asr<=44100]` and `[abr<=128]`), so the audio is never re-encoded and never loses quality.
   - **split download**: simultaneously extract high-definition video and separate audio track (with an optional `vídeo sem áudio` output).
 - **bilingual auto-detection**: automatically adapts to your system language:
   - brazilian portuguese (`pt_BR`) on portuguese environments.
@@ -92,7 +94,7 @@ the installer registers the app in windows settings, so it can be removed from t
 ### option b: portable release
 
 1. download either:
-   - `Yt-RivoGUI-v0.1.0.1-windows.zip` (recommended; avoids browser heuristic download warnings).
+   - `Yt-RivoGUI-v0.1.1.0-windows.zip` (recommended; avoids browser heuristic download warnings).
    - `Yt-RivoGUI.exe` (direct standalone executable).
    from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required. portable builds also update themselves in place.

@@ -38,13 +38,19 @@ def test_section_summaries_show_smart_defaults():
     window, _, _, _ = _make_window()
     try:
         assert window.section_quality.summary_label.text() == 'melhor · mp4'
-        assert window.section_audio.summary_label.text() == 'mp3 · melhor bitrate'
+        # video mode: the audio section describes the audio embedded in the video
+        assert window.section_audio.summary_label.text() == 'melhor · máximo'
         assert window.section_playlist.summary_label.text() == 'vídeo único'
         assert window.section_extras.summary_label.text() == 'capa · metadados'
 
         # defaults are the best possible configuration
         assert window.quality_combo.currentData() == 'best'
         assert window.format_combo.currentData() == 'mp4'
+        assert window.video_codec_combo.currentData() == 'h264'
+        assert window.video_bitrate_combo.currentData() == 'auto'
+        assert window.video_fps_combo.currentData() == 'auto'
+        assert window.embedded_audio_bitrate_combo.currentData() == 'auto'
+        assert window.embedded_audio_rate_combo.currentData() == 'auto'
         assert window.audio_format_combo.currentData() == 'mp3'
         assert window.chk_embed_thumb.isChecked()
         assert window.chk_embed_meta.isChecked()
@@ -208,9 +214,15 @@ def test_mode_switch_updates_sections_not_leaf_visibility():
     window, _, _, _ = _make_window()
     try:
         window._set_phase(1)
-        # video mode: quality section shown, audio hidden
+        # video mode: quality section shown, audio section shown too (it sets the
+        # quality of the audio embedded into the video), but the separate audio
+        # codec controls belong to the audio/split modes
         assert not window.section_quality.isHidden()
-        assert window.section_audio.isHidden()
+        assert not window.section_audio.isHidden()
+        assert window.audio_format_combo.isHidden()
+        assert window.audio_quality_combo.isHidden()
+        assert not window.embedded_audio_bitrate_combo.isHidden()
+        assert not window.embedded_audio_rate_combo.isHidden()
         assert window.chk_video_muted.isHidden()
 
         window.radio_split.setChecked(True)
@@ -220,6 +232,9 @@ def test_mode_switch_updates_sections_not_leaf_visibility():
         assert not window.chk_video_muted.isHidden()
         assert not window.section_quality.isHidden()
         assert not window.section_audio.isHidden()
+        # the embedded-audio controls only apply to video mode
+        assert window.embedded_audio_bitrate_combo.isHidden()
+        assert window.embedded_audio_rate_combo.isHidden()
 
         window.radio_thumbnail.setChecked(True)
         window._on_mode_changed()
@@ -239,7 +254,7 @@ def test_english_summaries_follow_translation():
         window.i18n.set_language('en_US')
         window.apply_translations()
         assert window.section_quality.summary_label.text() == 'best · mp4'
-        assert window.section_audio.summary_label.text() == 'mp3 · best bitrate'
+        assert window.section_audio.summary_label.text() == 'best · max'
         assert window.section_playlist.summary_label.text() == 'single video'
         assert window.section_extras.summary_label.text() == 'cover art · metadata'
         assert window.btn_download.text() == 'download now'
@@ -316,6 +331,118 @@ def test_drop_event_only_accepts_urls(url, accepted):
         assert event._accepted is accepted
         if accepted:
             assert window.url_input.text() == url
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def _format_info_1080p_30fps() -> dict:
+    """Synthetic metadata: a 1080p/30 fps video with 44.1 kHz audio only."""
+    return {
+        'formats': [
+            {'format_id': '137', 'height': 1080, 'vcodec': 'avc1.640028', 'acodec': 'none', 'vbr': 4340, 'fps': 30},
+            {'format_id': '136', 'height': 720, 'vcodec': 'avc1.4d401f', 'acodec': 'none', 'vbr': 1536, 'fps': 30},
+            {'format_id': '140', 'vcodec': 'none', 'acodec': 'mp4a.40.2', 'abr': 128, 'asr': 44100},
+        ],
+    }
+
+
+def _combo_data(combo) -> list[str]:
+    return [combo.itemData(i) for i in range(combo.count())]
+
+
+def test_metadata_ready_limits_quality_choices_to_real_streams():
+    window, _, _, _ = _make_window()
+    try:
+        window._on_metadata_ready({'title': 'video teste', 'raw': _format_info_1080p_30fps()}, None)
+
+        # no resolution above what the video really has
+        assert _combo_data(window.quality_combo) == ['best', '1080p', '720p']
+        assert '2160p' not in _combo_data(window.quality_combo)
+        assert '1440p' not in _combo_data(window.quality_combo)
+
+        # frame rate stops at the native 30 fps
+        assert _combo_data(window.video_fps_combo) == ['auto', '30', '24', '15']
+        assert '60' not in _combo_data(window.video_fps_combo)
+
+        # bitrates are the real ones of the resolution "melhor" would download
+        assert _combo_data(window.video_bitrate_combo) == ['auto', '4400']
+        assert _combo_data(window.embedded_audio_bitrate_combo) == ['auto', '128']
+        assert _combo_data(window.embedded_audio_rate_combo) == ['auto', '44100']
+
+        # choosing 720p narrows the bitrate list to that resolution's streams
+        window.quality_combo.setCurrentIndex(window.quality_combo.findData('720p'))
+        assert _combo_data(window.video_bitrate_combo) == ['auto', '1600']
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_audio_section_controls_the_embedded_audio_in_video_mode():
+    window, _, _, _ = _make_window()
+    try:
+        window.radio_video.setChecked(True)
+        window._on_mode_changed()
+        window._on_metadata_ready({'title': 'video teste', 'raw': _format_info_1080p_30fps()}, None)
+
+        assert not window.section_audio.isHidden()
+        assert not window.embedded_audio_bitrate_combo.isHidden()
+        assert not window.embedded_audio_rate_combo.isHidden()
+        assert window.audio_format_combo.isHidden()
+        assert window.audio_quality_combo.isHidden()
+
+        window.embedded_audio_bitrate_combo.setCurrentIndex(
+            window.embedded_audio_bitrate_combo.findData('128')
+        )
+        window.embedded_audio_rate_combo.setCurrentIndex(
+            window.embedded_audio_rate_combo.findData('44100')
+        )
+        assert window.section_audio.summary_label.text() == '128 kbps · 44.1 khz'
+
+        options = None
+        from app.backend import DownloadOptions
+
+        options = DownloadOptions()
+        window._apply_video_options(options)
+        assert options.video_codec == 'h264'
+        assert options.video_bitrate == 'auto'
+        assert options.video_fps == 'auto'
+        assert options.embedded_audio_bitrate == '128'
+        assert options.embedded_audio_rate == '44100'
+    finally:
+        window.close()
+        window.deleteLater()
+
+
+def test_continue_button_keeps_its_size_while_loading(monkeypatch):
+    window, _, _, _ = _make_window()
+    try:
+        monkeypatch.setattr(window, '_fetch_metadata', lambda url=None: None)
+        window.url_input.setText('https://example.com/watch?v=abc')
+
+        idle_width = window.btn_continue.width()
+        idle_height = window.btn_continue.height()
+        assert idle_width > 0
+
+        window.btn_continue.click()
+        assert window._preview_loading
+        assert window.btn_continue.text() == 'carregando...'
+        assert window.btn_continue.width() == idle_width
+        assert window.btn_continue.height() == idle_height
+
+        # cycling the loading dots must not resize the button either
+        window._tick_loading()
+        assert window.btn_continue.width() == idle_width
+        assert window.btn_continue.height() == idle_height
+
+        # nor can a language switch change the size between the two states
+        window.i18n.set_language('en_US')
+        window.apply_translations()
+        english_width = window.btn_continue.width()
+        window._set_preview_loading(False)
+        assert window.btn_continue.width() == english_width
+        window._set_preview_loading(True)
+        assert window.btn_continue.width() == english_width
     finally:
         window.close()
         window.deleteLater()

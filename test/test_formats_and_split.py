@@ -12,7 +12,14 @@ from app import backend as backend_module
 from app.backend import (
     DownloadOptions,
     YtDLBackend,
+    available_audio_bitrates,
+    available_audio_sample_rates,
+    available_video_bitrates,
+    available_video_fps,
+    available_video_heights,
+    build_video_format_expression,
     ensure_local_ffmpeg_on_path,
+    format_options_from_info,
     get_ffmpeg_executable,
 )
 from app.i18n import TRANSLATIONS, I18nManager
@@ -47,6 +54,19 @@ def test_i18n_translation_keys_parity():
         'notice_wav_thumbnail',
         'status_downloading_split',
         'status_finished_split',
+        'video_codec_label',
+        'video_codec_h264',
+        'video_codec_h265',
+        'video_bitrate_label',
+        'video_bitrate_auto',
+        'video_fps_label',
+        'video_fps_auto',
+        'section_audio',
+        'audio_bitrate_label',
+        'audio_bitrate_auto',
+        'audio_rate_label',
+        'audio_rate_auto',
+        'summary_auto_max',
     }
     for key in expected_new_keys:
         assert key in pt_keys, f"Missing key in pt_BR: {key}"
@@ -292,3 +312,154 @@ def test_gui_split_mode_and_wav_interactions():
     window.audio_format_combo.setCurrentIndex(idx_mp3)
     assert window.audio_quality_combo.isEnabled()
 
+
+
+# ---------------------------------------------------------------------------
+# real-stream quality choices (resolution / fps / bitrate / sample rate)
+# ---------------------------------------------------------------------------
+def _format_info() -> dict:
+    return {
+        'formats': [
+            {'format_id': '137', 'height': 1080, 'vcodec': 'avc1.640028', 'acodec': 'none', 'vbr': 4340, 'fps': 30},
+            {'format_id': '248', 'height': 1080, 'vcodec': 'vp9', 'acodec': 'none', 'vbr': 2500, 'fps': 30},
+            {'format_id': '136', 'height': 720, 'vcodec': 'avc1.4d401f', 'acodec': 'none', 'vbr': 1536, 'fps': 30},
+            {'format_id': '18', 'height': 360, 'vcodec': 'avc1.42001E', 'acodec': 'mp4a.40.2', 'tbr': 700},
+            {'format_id': '140', 'vcodec': 'none', 'acodec': 'mp4a.40.2', 'abr': 128, 'asr': 44100},
+        ],
+    }
+
+
+def test_available_video_heights_only_lists_real_resolutions():
+    """A 1080p upload must never advertise 4k or 2k."""
+    assert available_video_heights(_format_info()) == [1080, 720, 360]
+    assert available_video_heights({}) == []
+    assert available_video_heights(None) == []
+
+
+def test_available_video_fps_stops_at_the_native_maximum():
+    thirty = {'formats': [{'vcodec': 'avc1', 'fps': 30}]}
+    sixty = {'formats': [{'vcodec': 'avc1', 'fps': 60}]}
+    fifty = {'formats': [{'vcodec': 'avc1', 'fps': 50}]}
+
+    assert available_video_fps(thirty) == [30, 24, 15]
+    assert available_video_fps(sixty) == [60, 45, 30, 24, 15]
+    # a native frame rate outside the ladder keeps its own value
+    assert available_video_fps(fifty) == [50, 45, 30, 24, 15]
+    assert available_video_fps({'formats': [{'vcodec': 'avc1'}]}) == []
+
+
+def test_available_video_bitrates_follow_the_chosen_height():
+    info = _format_info()
+    assert available_video_bitrates(info) == [4400, 2500, 1600, 700]
+    assert available_video_bitrates(info, '1080p') == [4400, 2500]
+    assert available_video_bitrates(info, '720p') == [1600]
+    assert available_video_bitrates({}) == []
+
+
+def test_available_audio_options_respect_the_media_limits():
+    """Only the audio the media really carries is offered (44.1 kHz, no 48 kHz)."""
+    info = _format_info()
+    assert available_audio_bitrates(info) == [128]
+    assert available_audio_sample_rates(info) == [44100]
+
+    wide = {'formats': [
+        {'vcodec': 'none', 'acodec': 'mp4a.40.2', 'abr': 128, 'asr': 44100},
+        {'vcodec': 'none', 'acodec': 'opus', 'abr': 160, 'asr': 48000},
+    ]}
+    assert available_audio_bitrates(wide) == [160, 128]
+    assert available_audio_sample_rates(wide) == [48000, 44100]
+
+
+def test_format_options_from_info_collects_every_choice():
+    options = format_options_from_info(_format_info())
+    assert options['heights'] == [1080, 720, 360]
+    assert options['fps'] == [30, 24, 15]
+    assert options['video_bitrates'] == [4400, 2500, 1600, 700]
+    assert options['audio_bitrates'] == [128]
+    assert options['sample_rates'] == [44100]
+
+
+def test_video_format_expression_prefers_the_chosen_resolution():
+    expression = build_video_format_expression(DownloadOptions(
+        video_quality='1080p',
+        video_fps='45',
+        video_bitrate='4400',
+        embedded_audio_bitrate='128',
+        embedded_audio_rate='44100',
+    ))
+    candidates = expression.split('/')
+
+    assert candidates[0] == (
+        'bestvideo[height=1080][fps<=45][vbr<=4400]'
+        '+bestaudio[asr<=44100][abr<=128]'
+    )
+    # the caps are relaxed before the requested resolution ever is
+    assert 'bestvideo[height=1080]+bestaudio' in candidates
+    assert candidates[-2] == 'best[height<=1080]'
+    assert candidates[-1] == 'best'
+
+
+def test_codec_is_a_preference_that_never_downgrades_resolution():
+    """h.264 is preferred among equally sized streams, not as a hard filter."""
+    h264_opts: dict = {}
+    backend_module._apply_codec_preference(h264_opts, DownloadOptions(video_codec='h264'))
+    assert h264_opts['format_sort'] == ['res', 'vcodec:h264']
+
+    h265_opts: dict = {}
+    backend_module._apply_codec_preference(h265_opts, DownloadOptions(video_codec='h265'))
+    assert h265_opts['format_sort'] == ['res', 'vcodec:h265']
+
+
+def test_frame_rate_cap_without_a_resolution_choice():
+    expression = build_video_format_expression(DownloadOptions(video_fps='30'))
+    assert expression.split('/')[0] == 'bestvideo[fps<=30]+bestaudio'
+
+
+def test_split_format_expression_skips_embedded_audio_filters():
+    """Split mode re-encodes a separate audio file, so audio filters do not apply."""
+    expression = build_video_format_expression(
+        DownloadOptions(video_quality='1080p', embedded_audio_rate='44100'),
+        embedded_audio=False,
+    )
+    assert 'asr' not in expression
+    assert '[height<=1080]' in expression
+
+
+def test_video_mode_options_apply_the_real_quality_choices():
+    ydl_opts = YtDLBackend().build_ydl_options(DownloadOptions(
+        mode='video',
+        video_quality='1080p',
+        video_codec='h265',
+        video_bitrate='4400',
+        video_fps='30',
+        embedded_audio_bitrate='128',
+        embedded_audio_rate='44100',
+    ))
+
+    chosen = ydl_opts['format']
+    assert chosen.startswith('bestvideo[height=1080][fps<=30][vbr<=4400]+bestaudio[asr<=44100][abr<=128]')
+    assert ydl_opts['format_sort'] == ['res', 'vcodec:h265']
+    assert ydl_opts['merge_output_format'] == 'mp4'
+
+
+def test_generated_format_expression_is_accepted_by_ytdlp():
+    """Every quality combination must produce a parseable yt-dlp format spec."""
+    from yt_dlp import YoutubeDL
+
+    ydl = YoutubeDL({'quiet': True})
+    combos = [
+        DownloadOptions(),
+        DownloadOptions(video_quality='1080p'),
+        DownloadOptions(video_codec='h265', video_fps='60', video_bitrate='8000'),
+        DownloadOptions(
+            video_quality='720p',
+            video_codec='h264',
+            video_fps='24',
+            video_bitrate='1500',
+            embedded_audio_bitrate='96',
+            embedded_audio_rate='44100',
+        ),
+    ]
+    for options in combos:
+        ydl.build_format_selector(build_video_format_expression(options))
+        ydl.build_format_selector(build_video_format_expression(options, embedded_audio=False))

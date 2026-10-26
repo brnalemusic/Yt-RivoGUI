@@ -26,7 +26,23 @@ except ModuleNotFoundError as exc:  # pragma: no cover
     raise RuntimeError('PySide6 is required for the GUI runtime. Install it with: pip install PySide6') from exc
 
 from app import __version__
-from app.backend import YtDLBackend, DownloadOptions, ProgressInfo, get_default_download_dir, clean_ansi
+from app.backend import (
+    YtDLBackend,
+    DownloadOptions,
+    ProgressInfo,
+    GENERIC_AUDIO_BITRATE_LADDER,
+    GENERIC_SAMPLE_RATE_LADDER,
+    GENERIC_VIDEO_BITRATE_LADDER,
+    VIDEO_FPS_LADDER,
+    VIDEO_HEIGHT_LADDER,
+    available_audio_bitrates,
+    available_audio_sample_rates,
+    available_video_bitrates,
+    available_video_fps,
+    available_video_heights,
+    clean_ansi,
+    get_default_download_dir,
+)
 from app.i18n import I18nManager
 from app.styles import MINIMAL_MONO_STYLESHEET  # noqa: F401  (re-exported for compatibility)
 from app.updater import (
@@ -343,6 +359,9 @@ class MainWindow(QMainWindow):
         self.last_downloaded_file = ''
         self._phase = PHASE_HOME
         self._playlist_count = 0
+        # raw metadata of the current preview: the quality choices are rebuilt
+        # from the streams it really contains
+        self._format_info: dict | None = None
 
         # metadata preview loading state (continue button waits for it)
         self._preview_loading = False
@@ -736,18 +755,40 @@ class MainWindow(QMainWindow):
         self.quality_label.setObjectName('SecondaryText')
         self.quality_combo = QComboBox()
         self.quality_combo.addItem(self.i18n('quality_best').lower(), 'best')
-        self.quality_combo.addItem(self.i18n('quality_2160p').lower(), '2160p')
-        self.quality_combo.addItem(self.i18n('quality_1440p').lower(), '1440p')
-        self.quality_combo.addItem(self.i18n('quality_1080p').lower(), '1080p')
-        self.quality_combo.addItem(self.i18n('quality_720p').lower(), '720p')
-        self.quality_combo.addItem(self.i18n('quality_480p').lower(), '480p')
-        self.quality_combo.addItem(self.i18n('quality_360p').lower(), '360p')
 
         self.format_label = QLabel(self.i18n('format_label').lower())
         self.format_label.setObjectName('SecondaryText')
         self.format_combo = QComboBox()
         self.format_combo.addItem('mp4', 'mp4')
         self.format_combo.addItem('mkv', 'mkv')
+
+        self.video_codec_label = QLabel(self.i18n('video_codec_label').lower())
+        self.video_codec_label.setObjectName('SecondaryText')
+        self.video_codec_combo = QComboBox()
+        self.video_codec_combo.addItem(self.i18n('video_codec_h264').lower(), 'h264')
+        self.video_codec_combo.addItem(self.i18n('video_codec_h265').lower(), 'h265')
+
+        self.video_bitrate_label = QLabel(self.i18n('video_bitrate_label').lower())
+        self.video_bitrate_label.setObjectName('SecondaryText')
+        self.video_bitrate_combo = QComboBox()
+        self.video_bitrate_combo.addItem(self.i18n('video_bitrate_auto').lower(), 'auto')
+
+        self.video_fps_label = QLabel(self.i18n('video_fps_label').lower())
+        self.video_fps_label.setObjectName('SecondaryText')
+        self.video_fps_combo = QComboBox()
+        self.video_fps_combo.addItem(self.i18n('video_fps_auto').lower(), 'auto')
+
+        # audio embedded in the video (video mode): stream selection only, so
+        # only the values the media really carries are offered
+        self.embedded_audio_bitrate_label = QLabel(self.i18n('audio_bitrate_label').lower())
+        self.embedded_audio_bitrate_label.setObjectName('SecondaryText')
+        self.embedded_audio_bitrate_combo = QComboBox()
+        self.embedded_audio_bitrate_combo.addItem(self.i18n('audio_bitrate_auto').lower(), 'auto')
+
+        self.embedded_audio_rate_label = QLabel(self.i18n('audio_rate_label').lower())
+        self.embedded_audio_rate_label.setObjectName('SecondaryText')
+        self.embedded_audio_rate_combo = QComboBox()
+        self.embedded_audio_rate_combo.addItem(self.i18n('audio_rate_auto').lower(), 'auto')
 
         self.audio_format_label = QLabel(self.i18n('audio_format_label').lower())
         self.audio_format_label.setObjectName('SecondaryText')
@@ -767,6 +808,22 @@ class MainWindow(QMainWindow):
         self.audio_quality_combo.addItem(self.i18n('audio_quality_256').lower(), '256')
         self.audio_quality_combo.addItem(self.i18n('audio_quality_192').lower(), '192')
         self.audio_quality_combo.addItem(self.i18n('audio_quality_128').lower(), '128')
+
+        # Long descriptive entries must not widen the accordion grid: the closed
+        # combo reserves a compact length while the popup shows every label in full.
+        for combo in (
+            self.quality_combo,
+            self.format_combo,
+            self.video_codec_combo,
+            self.video_bitrate_combo,
+            self.video_fps_combo,
+            self.audio_format_combo,
+            self.audio_quality_combo,
+            self.embedded_audio_bitrate_combo,
+            self.embedded_audio_rate_combo,
+        ):
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setMinimumContentsLength(8)
 
         self.chk_embed_thumb = QCheckBox(self.i18n('opt_embed_thumbnail').lower())
         self.chk_embed_thumb.setChecked(True)
@@ -808,12 +865,18 @@ class MainWindow(QMainWindow):
         quality_grid.addWidget(self.quality_combo, 0, 1)
         quality_grid.addWidget(self.format_label, 0, 2)
         quality_grid.addWidget(self.format_combo, 0, 3)
+        quality_grid.addWidget(self.video_bitrate_label, 1, 0)
+        quality_grid.addWidget(self.video_bitrate_combo, 1, 1)
+        quality_grid.addWidget(self.video_fps_label, 1, 2)
+        quality_grid.addWidget(self.video_fps_combo, 1, 3)
+        quality_grid.addWidget(self.video_codec_label, 2, 0)
+        quality_grid.addWidget(self.video_codec_combo, 2, 1)
         quality_grid.setColumnStretch(1, 1)
         quality_grid.setColumnStretch(3, 2)
         self.section_quality.content_layout.addLayout(quality_grid)
         body.addWidget(self.section_quality)
 
-        self.section_audio = CollapsibleSection(self.i18n('audio_format_label').rstrip(':').lower())
+        self.section_audio = CollapsibleSection(self.i18n('section_audio').lower())
         audio_grid = QGridLayout()
         audio_grid.setHorizontalSpacing(14)
         audio_grid.setVerticalSpacing(8)
@@ -821,6 +884,10 @@ class MainWindow(QMainWindow):
         audio_grid.addWidget(self.audio_format_combo, 0, 1)
         audio_grid.addWidget(self.audio_quality_label, 0, 2)
         audio_grid.addWidget(self.audio_quality_combo, 0, 3)
+        audio_grid.addWidget(self.embedded_audio_bitrate_label, 1, 0)
+        audio_grid.addWidget(self.embedded_audio_bitrate_combo, 1, 1)
+        audio_grid.addWidget(self.embedded_audio_rate_label, 1, 2)
+        audio_grid.addWidget(self.embedded_audio_rate_combo, 1, 3)
         audio_grid.setColumnStretch(1, 1)
         audio_grid.setColumnStretch(3, 2)
         self.section_audio.content_layout.addLayout(audio_grid)
@@ -877,8 +944,13 @@ class MainWindow(QMainWindow):
         page_layout.addWidget(action_bar)
 
         # --- wiring for live summaries ---
-        self.quality_combo.currentIndexChanged.connect(self._render_summaries)
+        self.quality_combo.currentIndexChanged.connect(self._on_quality_changed)
         self.format_combo.currentIndexChanged.connect(self._render_summaries)
+        self.video_codec_combo.currentIndexChanged.connect(self._render_summaries)
+        self.video_bitrate_combo.currentIndexChanged.connect(self._render_summaries)
+        self.video_fps_combo.currentIndexChanged.connect(self._render_summaries)
+        self.embedded_audio_bitrate_combo.currentIndexChanged.connect(self._render_summaries)
+        self.embedded_audio_rate_combo.currentIndexChanged.connect(self._render_summaries)
         self.chk_playlist.toggled.connect(self._render_summaries)
         self.chk_embed_thumb.toggled.connect(self._render_summaries)
         self.chk_embed_meta.toggled.connect(self._render_summaries)
@@ -1234,18 +1306,24 @@ class MainWindow(QMainWindow):
 
         quality = self.quality_combo.currentData()
         if quality:
-            quality_short = self.i18n(f'quality_short_{quality}').lower()
+            quality_short = self._quality_short_label(str(quality))
             container = self.format_combo.currentData() or ''
             self.section_quality.set_summary(f'{quality_short} · {container}')
 
-        codec = self.audio_format_combo.currentData() or ''
-        bitrate = self.audio_quality_combo.currentData() or ''
-        if bitrate == '0':
-            bitrate_short = self.i18n('audio_quality_wav').lower()
+        if self.radio_video.isChecked():
+            # video mode: the section controls the audio embedded in the video
+            self.section_audio.set_summary(
+                f'{self._embedded_audio_bitrate_summary()} · {self._embedded_audio_rate_summary()}'
+            )
         else:
-            bitrate_short = self.i18n(f'audio_quality_short_{bitrate}').lower()
-        if codec and bitrate:
-            self.section_audio.set_summary(f'{codec} · {bitrate_short}')
+            codec = self.audio_format_combo.currentData() or ''
+            bitrate = self.audio_quality_combo.currentData() or ''
+            if bitrate == '0':
+                bitrate_short = self.i18n('audio_quality_wav').lower()
+            else:
+                bitrate_short = self.i18n(f'audio_quality_short_{bitrate}').lower()
+            if codec and bitrate:
+                self.section_audio.set_summary(f'{codec} · {bitrate_short}')
 
         if self.chk_playlist.isChecked():
             if self._playlist_count:
@@ -1267,6 +1345,125 @@ class MainWindow(QMainWindow):
         if self.chk_video_muted.isVisible() and self.chk_video_muted.isChecked():
             extras.append(self.i18n('summary_extras_muted').lower())
         self.section_extras.set_summary(' · '.join(extras) if extras else self.i18n('summary_extras_none').lower())
+
+    # ------------------------------------------------------------------
+    # real-stream quality choices
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _khz_label(rate: int) -> str:
+        """Formats a sample rate in Hz as ``44.1 khz`` / ``48 khz``."""
+        text = f'{rate / 1000:.1f}'.rstrip('0').rstrip('.')
+        return f'{text} khz'
+
+    def _quality_option_label(self, height: int) -> str:
+        key = f'quality_{height}p'
+        translated = self.i18n(key)
+        return (translated if translated != key else f'{height}p').lower()
+
+    def _quality_short_label(self, data: str) -> str:
+        key = f'quality_short_{data}'
+        translated = self.i18n(key)
+        return (translated if translated != key else str(data)).lower()
+
+    def _embedded_audio_bitrate_summary(self) -> str:
+        value = self.embedded_audio_bitrate_combo.currentData()
+        if not value or value == 'auto':
+            return self.i18n('quality_short_best').lower()
+        return f'{value} kbps'
+
+    def _embedded_audio_rate_summary(self) -> str:
+        value = self.embedded_audio_rate_combo.currentData()
+        if not value or value == 'auto':
+            return self.i18n('summary_auto_max').lower()
+        return self._khz_label(int(value))
+
+    def _populate_choice_combo(
+        self,
+        combo: QComboBox,
+        entries: list[tuple[str, str]],
+        current: str | None = None,
+    ) -> None:
+        """Refills a combo keeping the previous selection when it still exists."""
+        combo.blockSignals(True)
+        combo.clear()
+        for label, data in entries:
+            combo.addItem(label, data)
+        index = combo.findData(current) if current is not None else -1
+        combo.setCurrentIndex(index if index >= 0 else 0)
+        combo.blockSignals(False)
+
+    def _rebuild_video_bitrate_options(self) -> None:
+        """Bitrate caps come from the streams of the chosen resolution."""
+        info = self._format_info
+        known = bool(info and info.get('formats'))
+        if not known:
+            bitrates = list(GENERIC_VIDEO_BITRATE_LADDER)
+        else:
+            height = self.quality_combo.currentData()
+            if not height or height == 'best':
+                # the best available resolution is what "melhor" downloads
+                heights = available_video_heights(info)
+                height = f'{heights[0]}p' if heights else None
+            bitrates = available_video_bitrates(info, height)
+        entries = [(self.i18n('video_bitrate_auto').lower(), 'auto')]
+        entries += [(f'{bitrate} kbps', str(bitrate)) for bitrate in bitrates]
+        self._populate_choice_combo(
+            self.video_bitrate_combo, entries, self.video_bitrate_combo.currentData()
+        )
+
+    def _rebuild_format_options(self) -> None:
+        """Rebuilds every quality choice from the real streams of the preview.
+
+        A 1080p upload never offers 4k, a 30 fps upload never offers 60 fps and
+        a 44.1 kHz soundtrack never offers 48 kHz: each combo ends at the media's
+        own maximum.  Without stream data (e.g. playlists) the standard ladders
+        are used, and the caps never upscale anything.
+        """
+        info = self._format_info
+        known = bool(info and info.get('formats'))
+
+        heights = available_video_heights(info) if known else list(VIDEO_HEIGHT_LADDER)
+        quality_entries = [(self.i18n('quality_best').lower(), 'best')]
+        quality_entries += [(self._quality_option_label(height), f'{height}p') for height in heights]
+        self._populate_choice_combo(
+            self.quality_combo, quality_entries, self.quality_combo.currentData() or 'best'
+        )
+
+        self._rebuild_video_bitrate_options()
+
+        fps_values = available_video_fps(info) if known else list(VIDEO_FPS_LADDER)
+        fps_entries = [(self.i18n('video_fps_auto').lower(), 'auto')]
+        fps_entries += [(f'{fps} fps', str(fps)) for fps in fps_values]
+        self._populate_choice_combo(
+            self.video_fps_combo, fps_entries, self.video_fps_combo.currentData()
+        )
+
+        audio_bitrates = available_audio_bitrates(info) if known else list(GENERIC_AUDIO_BITRATE_LADDER)
+        audio_entries = [(self.i18n('audio_bitrate_auto').lower(), 'auto')]
+        audio_entries += [(f'{bitrate} kbps', str(bitrate)) for bitrate in audio_bitrates]
+        self._populate_choice_combo(
+            self.embedded_audio_bitrate_combo, audio_entries, self.embedded_audio_bitrate_combo.currentData()
+        )
+
+        rates = available_audio_sample_rates(info) if known else list(GENERIC_SAMPLE_RATE_LADDER)
+        rate_entries = [(self.i18n('audio_rate_auto').lower(), 'auto')]
+        rate_entries += [(self._khz_label(rate), str(rate)) for rate in rates]
+        self._populate_choice_combo(
+            self.embedded_audio_rate_combo, rate_entries, self.embedded_audio_rate_combo.currentData()
+        )
+
+    def _apply_format_info(self, raw: dict | None) -> None:
+        """Stores the previewed media stream list and rebuilds the choices."""
+        self._format_info = raw or None
+        self._rebuild_format_options()
+
+    def _reset_format_options(self) -> None:
+        self._apply_format_info(None)
+
+    def _on_quality_changed(self) -> None:
+        # the available video bitrates belong to the chosen resolution
+        self._rebuild_video_bitrate_options()
+        self._render_summaries()
 
     # ------------------------------------------------------------------
     # translations
@@ -1305,12 +1502,17 @@ class MainWindow(QMainWindow):
         self.chk_video_muted.setText(self.i18n('opt_video_muted').lower())
 
         self.section_quality.set_title(self.i18n('quality_label').rstrip(':').lower())
-        self.section_audio.set_title(self.i18n('audio_format_label').rstrip(':').lower())
+        self.section_audio.set_title(self.i18n('section_audio').lower())
         self.section_playlist.set_title(self.i18n('playlist_prefix').rstrip(':').lower())
         self.section_extras.set_title(self.i18n('section_extras').lower())
 
         self.quality_label.setText(self.i18n('quality_label').lower())
         self.format_label.setText(self.i18n('format_label').lower())
+        self.video_codec_label.setText(self.i18n('video_codec_label').lower())
+        self.video_bitrate_label.setText(self.i18n('video_bitrate_label').lower())
+        self.video_fps_label.setText(self.i18n('video_fps_label').lower())
+        self.embedded_audio_bitrate_label.setText(self.i18n('audio_bitrate_label').lower())
+        self.embedded_audio_rate_label.setText(self.i18n('audio_rate_label').lower())
         self.audio_format_label.setText(self.i18n('audio_format_label').lower())
         self.audio_quality_label.setText(self.i18n('audio_quality_label').lower())
 
@@ -1354,19 +1556,12 @@ class MainWindow(QMainWindow):
         else:
             self.btn_toggle_logs.setText(self.i18n('toggle_logs_show').lower())
 
-        # Update quality combo text
-        cur_q = self.quality_combo.currentData()
-        self.quality_combo.clear()
-        self.quality_combo.addItem(self.i18n('quality_best').lower(), 'best')
-        self.quality_combo.addItem(self.i18n('quality_2160p').lower(), '2160p')
-        self.quality_combo.addItem(self.i18n('quality_1440p').lower(), '1440p')
-        self.quality_combo.addItem(self.i18n('quality_1080p').lower(), '1080p')
-        self.quality_combo.addItem(self.i18n('quality_720p').lower(), '720p')
-        self.quality_combo.addItem(self.i18n('quality_480p').lower(), '480p')
-        self.quality_combo.addItem(self.i18n('quality_360p').lower(), '360p')
-        idx = self.quality_combo.findData(cur_q)
-        if idx >= 0:
-            self.quality_combo.setCurrentIndex(idx)
+        # Update the quality choices (only what the previewed media really has)
+        self._populate_choice_combo(self.video_codec_combo, [
+            (self.i18n('video_codec_h264').lower(), 'h264'),
+            (self.i18n('video_codec_h265').lower(), 'h265'),
+        ], self.video_codec_combo.currentData() or 'h264')
+        self._rebuild_format_options()
 
         # Update audio quality combo according to format
         self._update_wav_state()
@@ -1392,6 +1587,7 @@ class MainWindow(QMainWindow):
         self.btn_drawer_logs.setText(self.i18n('drawer_show_logs').lower())
         self.drawer_version.setText(f'v{__version__}')
 
+        self._sync_continue_button_width()
         self._render_summaries()
         self._render_update_state()
 
@@ -1864,6 +2060,19 @@ class MainWindow(QMainWindow):
         self.quality_combo.setVisible(show_video_opts)
         self.format_label.setVisible(show_video_opts)
         self.format_combo.setVisible(show_video_opts)
+        self.video_codec_label.setVisible(show_video_opts)
+        self.video_codec_combo.setVisible(show_video_opts)
+        self.video_bitrate_label.setVisible(show_video_opts)
+        self.video_bitrate_combo.setVisible(show_video_opts)
+        self.video_fps_label.setVisible(show_video_opts)
+        self.video_fps_combo.setVisible(show_video_opts)
+
+        # audio embedded in the video (video mode only: audio/split modes
+        # download and re-encode a separate audio file instead)
+        self.embedded_audio_bitrate_label.setVisible(is_video)
+        self.embedded_audio_bitrate_combo.setVisible(is_video)
+        self.embedded_audio_rate_label.setVisible(is_video)
+        self.embedded_audio_rate_combo.setVisible(is_video)
 
         self.audio_format_label.setVisible(show_audio_opts)
         self.audio_format_combo.setVisible(show_audio_opts)
@@ -1881,7 +2090,9 @@ class MainWindow(QMainWindow):
 
         # section-level visibility (accordion collapsed/hidden per mode)
         self.section_quality.setVisible(show_video_opts)
-        self.section_audio.setVisible(show_audio_opts)
+        # the audio section stays available in video mode: it sets the quality
+        # of the audio embedded into the downloaded video
+        self.section_audio.setVisible(show_video_opts or show_audio_opts)
         self.section_playlist.setVisible(not is_thumb)
         self.section_extras.setVisible(not is_thumb)
 
@@ -1942,6 +2153,24 @@ class MainWindow(QMainWindow):
         self._loading_dots = self._loading_dots % 3 + 1
         self.btn_continue.setText(self._loading_label())
 
+    def _sync_continue_button_width(self) -> None:
+        """Keeps the continue button the same size in both label states.
+
+        The loading label (``carregando...``) is wider than ``continuar``; the
+        button reserves the widest size hint up front so clicking it never
+        resizes the control while the metadata is fetched.
+        """
+        button = self.btn_continue
+        button.ensurePolished()
+        current = button.text()
+        loading_text = self.i18n('continue_loading').lower().rstrip('.') + '...'
+        width = 0
+        for text in (self.i18n('continue_button').lower(), loading_text):
+            button.setText(text)
+            width = max(width, button.sizeHint().width())
+        button.setText(current)
+        button.setFixedWidth(max(132, width))
+
     def _cancel_metadata(self) -> None:
         if self.metadata_thread and self.metadata_thread.isRunning():
             self.metadata_thread.cancel()
@@ -1963,6 +2192,10 @@ class MainWindow(QMainWindow):
             url = self.url_input.text().strip()
         if not url:
             return
+
+        if url != self.last_fetched_url:
+            # a different link: the previous media's stream lists no longer apply
+            self._reset_format_options()
 
         self.last_fetched_url = url
         self.preview_title.setText(self.i18n('preview_loading').lower())
@@ -2017,6 +2250,10 @@ class MainWindow(QMainWindow):
         self.status_label.setText(self.i18n('preview_ready').lower())
         self.status_dot.setStyleSheet('color: #10b981; font-size: 13px;')
 
+        # offer only the resolutions, frame rates, bitrates and sample rates the
+        # detected media really carries
+        self._apply_format_info(info.get('raw') if isinstance(info, dict) else None)
+
         # smart defaults are enough: the flow advances automatically
         self._render_summaries()
         self._set_phase(PHASE_CONFIGURE)
@@ -2057,6 +2294,7 @@ class MainWindow(QMainWindow):
         self.url_input.clear()
         self.last_fetched_url = ''
         self._playlist_count = 0
+        self._reset_format_options()
         self._reset_preview()
 
     # ------------------------------------------------------------------
@@ -2162,8 +2400,7 @@ class MainWindow(QMainWindow):
             options.audio_quality = self.audio_quality_combo.currentData()
         elif self.radio_split.isChecked():
             options.mode = 'split'
-            options.video_quality = self.quality_combo.currentData()
-            options.video_format = self.format_combo.currentData()
+            self._apply_video_options(options)
             options.audio_format = self.audio_format_combo.currentData()
             options.audio_quality = self.audio_quality_combo.currentData()
             options.video_muted = self.chk_video_muted.isChecked()
@@ -2173,8 +2410,7 @@ class MainWindow(QMainWindow):
             options.mode = 'thumbnail_only'
         else:
             options.mode = 'video'
-            options.video_quality = self.quality_combo.currentData()
-            options.video_format = self.format_combo.currentData()
+            self._apply_video_options(options)
             options.download_subs = self.chk_subtitles.isChecked()
             options.sub_lang = self.sub_lang_combo.currentData()
 
@@ -2210,6 +2446,16 @@ class MainWindow(QMainWindow):
         self.download_thread.finished.connect(self._on_download_finished)
         self.download_thread.failed.connect(self._on_download_failed)
         self.download_thread.start()
+
+    def _apply_video_options(self, options: DownloadOptions) -> None:
+        """Copies the quality section choices into the download options."""
+        options.video_quality = self.quality_combo.currentData() or 'best'
+        options.video_format = self.format_combo.currentData() or 'mp4'
+        options.video_codec = self.video_codec_combo.currentData() or 'h264'
+        options.video_bitrate = self.video_bitrate_combo.currentData() or 'auto'
+        options.video_fps = self.video_fps_combo.currentData() or 'auto'
+        options.embedded_audio_bitrate = self.embedded_audio_bitrate_combo.currentData() or 'auto'
+        options.embedded_audio_rate = self.embedded_audio_rate_combo.currentData() or 'auto'
 
     def _cancel_download(self) -> None:
         if self.download_thread and self.download_thread.isRunning():

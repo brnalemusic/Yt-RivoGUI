@@ -76,6 +76,7 @@ Any AI assistant or autonomous agent working on this codebase **must strictly co
   - Houses `DownloadOptions`, `ProgressInfo`, and `YtDLBackend`.
   - Configures download pipelines, format selection, output templates, and FFmpeg postprocessors (`FFmpegExtractAudio`, `FFmpegMetadata`, `FFmpegEmbedSubtitle`, `EmbedThumbnail`).
   - Implements modes: `video`, `audio`, `split` (video + audio separated), and `thumbnail_only`.
+- Derives the quality choices from the detected streams (`available_video_heights`, `available_video_fps`, `available_video_bitrates`, `available_audio_bitrates`, `available_audio_sample_rates`) and turns them into yt-dlp format filters (`build_video_format_expression`) for resolution, frame rate, `h.264`/`h.265` codec, video bitrate and the embedded audio bitrate/sample rate. No transcode: every choice selects or caps a stream the site already serves, with a fallback ladder.
   - Detects installer-provided media tools in `<exe dir>\bin` (or `<repo>\bin` for source checkouts), prepends that folder to `PATH`, passes it to yt-dlp as `ffmpeg_location`, and uses the local binary for `_strip_audio`.
 - **`app/gui.py`**:
   - PySide6 desktop interface.

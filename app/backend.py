@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import subprocess
@@ -107,6 +108,147 @@ def format_speed(speed: float | int | None) -> str:
     return f'{speed_kb:.0f} KB/s'
 
 
+# ---------------------------------------------------------------------------
+# Real-stream inspection helpers
+#
+# The GUI only offers choices the media actually supports: resolution, frame
+# rate, video bitrate, embedded-audio bitrate and sample rate are all derived
+# from ``info['formats']``.  Nothing here re-encodes media: every choice is a
+# yt-dlp format-selection filter over the streams the site already serves.
+# ---------------------------------------------------------------------------
+
+# Fallback ladders used when the real stream list is unavailable, e.g. for
+# playlists, where ``extract_flat`` returns entries without their formats.
+VIDEO_HEIGHT_LADDER = (2160, 1440, 1080, 720, 480, 360, 240, 144)
+VIDEO_FPS_LADDER = (60, 45, 30, 24, 15)
+GENERIC_VIDEO_BITRATE_LADDER = (8000, 6000, 4000, 2500, 1500, 800)
+GENERIC_AUDIO_BITRATE_LADDER = (320, 256, 192, 128, 96)
+GENERIC_SAMPLE_RATE_LADDER = (48000, 44100)
+
+# Real sites expose many near-duplicate streams (including low-quality HLS
+# renditions); the selectors stay short and useful by keeping the best ones.
+MAX_VIDEO_BITRATE_CHOICES = 6
+MAX_AUDIO_BITRATE_CHOICES = 4
+MAX_SAMPLE_RATE_CHOICES = 3
+
+# Codec preferences expressed as yt-dlp format sorting (no transcoding).  The
+# resolution stays the primary criterion, so preferring h.264 never downgrades
+# a 4k upload (which often only ships av1/vp9) to the best 1080p h.264 stream.
+VIDEO_CODEC_SORT = {
+    'h264': 'vcodec:h264',
+    'h265': 'vcodec:h265',
+}
+
+
+def _positive_int(value: Any) -> int | None:
+    """Best-effort conversion of a numeric format field into a positive int."""
+    try:
+        number = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def parse_height(value: Any) -> int | None:
+    """Parses ``'1080p'``/``'1080'``/``1080`` into ``1080`` (``None`` for best/auto)."""
+    if isinstance(value, (int, float)):
+        return _positive_int(value)
+    if not value or str(value).strip().lower() in ('best', 'auto', 'none'):
+        return None
+    digits = re.sub(r'[^0-9]', '', str(value))
+    return _positive_int(digits) if digits else None
+
+
+def _iter_info_formats(info: dict[str, Any] | None):
+    for fmt in (info or {}).get('formats') or ():
+        if isinstance(fmt, dict):
+            yield fmt
+
+
+def _has_stream(fmt: dict[str, Any], key: str) -> bool:
+    return str(fmt.get(key) or 'none').lower() != 'none'
+
+
+def _video_streams(info: dict[str, Any] | None) -> list[dict[str, Any]]:
+    return [fmt for fmt in _iter_info_formats(info) if _has_stream(fmt, 'vcodec')]
+
+
+def _audio_streams(info: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Audio streams, preferring audio-only ones over combined video/audio formats."""
+    streams = [fmt for fmt in _iter_info_formats(info) if _has_stream(fmt, 'acodec')]
+    audio_only = [fmt for fmt in streams if not _has_stream(fmt, 'vcodec')]
+    return audio_only or streams
+
+
+def available_video_heights(info: dict[str, Any] | None) -> list[int]:
+    """Returns every resolution height the video really offers, highest first."""
+    heights = {_positive_int(fmt.get('height')) for fmt in _video_streams(info)}
+    return sorted({height for height in heights if height}, reverse=True)
+
+
+def available_video_fps(info: dict[str, Any] | None) -> list[int]:
+    """Returns the frame-rate choices supported by the video, highest first.
+
+    Only values at or below the highest natively available frame rate are
+    offered, plus that native maximum when it is not part of the ladder
+    (e.g. a 50 fps upload keeps ``50 fps``).
+    """
+    values = {_positive_int(fmt.get('fps')) for fmt in _video_streams(info)}
+    values.discard(None)
+    if not values:
+        return []
+    max_fps = max(values)
+    options = {fps for fps in VIDEO_FPS_LADDER if fps <= max_fps}
+    options.add(max_fps)
+    return sorted(options, reverse=True)
+
+
+def available_video_bitrates(info: dict[str, Any] | None, height: Any = None) -> list[int]:
+    """Returns the video bitrates (kbps) really available for the chosen height."""
+    streams = _video_streams(info)
+    target = parse_height(height)
+    if target:
+        exact = [fmt for fmt in streams if _positive_int(fmt.get('height')) == target]
+        if exact:
+            streams = exact
+
+    bitrates: set[int] = set()
+    for fmt in streams:
+        value = _positive_int(fmt.get('vbr')) or _positive_int(fmt.get('tbr'))
+        if value:
+            # Round up to the next 100 kbps so the cap always includes the stream
+            # it was derived from.
+            bitrates.add(int(math.ceil(value / 100.0) * 100))
+    return sorted(bitrates, reverse=True)[:MAX_VIDEO_BITRATE_CHOICES]
+
+
+def available_audio_bitrates(info: dict[str, Any] | None) -> list[int]:
+    """Returns the audio bitrates (kbps) really available in the media."""
+    bitrates: set[int] = set()
+    for fmt in _audio_streams(info):
+        value = _positive_int(fmt.get('abr')) or _positive_int(fmt.get('tbr'))
+        if value:
+            bitrates.add(value)
+    return sorted(bitrates, reverse=True)[:MAX_AUDIO_BITRATE_CHOICES]
+
+
+def available_audio_sample_rates(info: dict[str, Any] | None) -> list[int]:
+    """Returns the audio sample rates (Hz) really available in the media."""
+    rates = {_positive_int(fmt.get('asr')) for fmt in _audio_streams(info)}
+    return sorted({rate for rate in rates if rate}, reverse=True)[:MAX_SAMPLE_RATE_CHOICES]
+
+
+def format_options_from_info(info: dict[str, Any] | None) -> dict[str, list[int]]:
+    """Collects every real-stream choice for the GUI in a single call."""
+    return {
+        'heights': available_video_heights(info),
+        'fps': available_video_fps(info),
+        'video_bitrates': available_video_bitrates(info),
+        'audio_bitrates': available_audio_bitrates(info),
+        'sample_rates': available_audio_sample_rates(info),
+    }
+
+
 def format_seconds(seconds: float | int | None) -> str:
     if not seconds or seconds < 0:
         return '--:--'
@@ -133,10 +275,15 @@ class ProgressInfo:
 @dataclass
 class DownloadOptions:
     mode: str = 'video'  # 'video', 'audio', 'split', 'thumbnail_only'
-    video_quality: str = 'best'  # 'best', '2160p', '1440p', '1080p', '720p', '480p', '360p'
+    video_quality: str = 'best'  # 'best' or a real height such as '1080p'
     video_format: str = 'mp4'  # 'mp4', 'mkv'
+    video_codec: str = 'h264'  # 'h264', 'h265'
+    video_bitrate: str = 'auto'  # 'auto' or a kbps cap derived from real streams
+    video_fps: str = 'auto'  # 'auto' or a frame-rate cap derived from real streams
     audio_format: str = 'mp3'  # 'mp3', 'm4a', 'flac', 'wav', 'opus'
     audio_quality: str = '320'  # '320', '256', '192', '128', 'best'
+    embedded_audio_bitrate: str = 'auto'  # 'auto' or a kbps cap for the audio inside the video
+    embedded_audio_rate: str = 'auto'  # 'auto' or an Hz cap for the audio inside the video
     embed_thumbnail: bool = True
     embed_metadata: bool = True
     download_subs: bool = False
@@ -144,6 +291,88 @@ class DownloadOptions:
     is_playlist: bool = False
     video_muted: bool = False  # If True in split mode, strip audio stream from video container
     output_dir: str = ''
+
+
+def _video_cap_filters(options: DownloadOptions) -> list[str]:
+    """Builds the optional video caps (frame rate, bitrate), strictest first."""
+    parts: list[str] = []
+    fps = parse_height(options.video_fps)
+    if fps:
+        parts.append(f'[fps<={fps}]')
+    bitrate = _positive_int(options.video_bitrate)
+    if bitrate:
+        parts.append(f'[vbr<={bitrate}]')
+    return parts
+
+
+def _apply_codec_preference(opts: dict[str, Any], options: DownloadOptions) -> None:
+    """Prefers the chosen codec among equally sized streams only.
+
+    Resolution stays the first sorting criterion, so h.264 never downgrades a
+    4k upload to the best 1080p h.264 rendition.
+    """
+    preference = VIDEO_CODEC_SORT.get(str(options.video_codec or '').lower())
+    if preference:
+        opts['format_sort'] = ['res', preference]
+
+
+def _embedded_audio_filter_parts(options: DownloadOptions) -> list[str]:
+    """Builds the format filters for the audio embedded in the video stream."""
+    parts: list[str] = []
+    rate = _positive_int(options.embedded_audio_rate)
+    if rate:
+        parts.append(f'[asr<={rate}]')
+    bitrate = _positive_int(options.embedded_audio_bitrate)
+    if bitrate:
+        parts.append(f'[abr<={bitrate}]')
+    return parts
+
+
+def build_video_format_expression(options: DownloadOptions, *, embedded_audio: bool = True) -> str:
+    """Builds a fallback ladder honouring every quality choice without re-encoding.
+
+    The chosen resolution is the primary decision, so it is tried exactly first
+    and only relaxed at the very end.  The frame rate and bitrate are caps: when
+    the site ships no stream matching them at that resolution they are dropped
+    before the resolution is, which avoids collapsing a 720p request into a 144p
+    rendition just because it is the only 15 fps one.  Finally the plain ``best``
+    stream keeps the download working on sites with a single combined format.
+    ``embedded_audio`` is False for split mode, where the audio is downloaded
+    and re-encoded separately.
+    """
+    height = parse_height(options.video_quality)
+    caps = _video_cap_filters(options)
+    relaxed = [''.join(caps[:count]) for count in range(len(caps), -1, -1)]
+
+    video_chains = []
+    if height:
+        # exact resolution first (caps honoured only when they exist there)…
+        video_chains += [f'[height={height}]{caps_suffix}' for caps_suffix in relaxed]
+        # …then anything up to it, before finally giving the cap priority
+        video_chains += [f'[height<={height}]{caps_suffix}' for caps_suffix in relaxed]
+    else:
+        video_chains = list(relaxed)
+    video_chains = [f'bestvideo{filters}' for filters in video_chains]
+    video_chains.append('bestvideo')
+
+    audio_chains = ['']
+    if embedded_audio:
+        audio_parts = _embedded_audio_filter_parts(options)
+        audio_chains = [
+            ''.join(audio_parts[:count])
+            for count in range(len(audio_parts), -1, -1)
+        ]
+
+    candidates = [
+        f'{video_chain}+bestaudio{audio_chain}'
+        for video_chain in video_chains
+        for audio_chain in audio_chains
+    ]
+    if height:
+        candidates.append(f'best[height<={height}]')
+    candidates.append('best')
+
+    return '/'.join(dict.fromkeys(candidates))
 
 
 class DownloadCancelledException(Exception):
@@ -335,20 +564,8 @@ class YtDLBackend:
         elif options.mode in ('split', 'video_audio'):
             # Download video and audio separately
             opts['keepvideo'] = True
-
-            res_limit = {
-                '2160p': '[height<=2160]',
-                '1440p': '[height<=1440]',
-                '1080p': '[height<=1080]',
-                '720p': '[height<=720]',
-                '480p': '[height<=480]',
-                '360p': '[height<=360]',
-            }.get(options.video_quality, '')
-
-            if res_limit:
-                opts['format'] = f'bestvideo{res_limit}+bestaudio/best{res_limit}/best'
-            else:
-                opts['format'] = 'bestvideo+bestaudio/best'
+            opts['format'] = build_video_format_expression(options, embedded_audio=False)
+            _apply_codec_preference(opts, options)
 
             container = options.video_format.lower()
             opts['merge_output_format'] = container
@@ -393,21 +610,10 @@ class YtDLBackend:
                 log_callback('[aviso] arquivos .wav não suportam incorporação de capa no áudio.')
 
         else:
-            # Video mode
-            # Quality resolution string
-            res_limit = {
-                '2160p': '[height<=2160]',
-                '1440p': '[height<=1440]',
-                '1080p': '[height<=1080]',
-                '720p': '[height<=720]',
-                '480p': '[height<=480]',
-                '360p': '[height<=360]',
-            }.get(options.video_quality, '')
-
-            if res_limit:
-                opts['format'] = f'bestvideo{res_limit}+bestaudio/best{res_limit}/best'
-            else:
-                opts['format'] = 'bestvideo+bestaudio/best'
+            # Video mode: the audio stream is merged as-is, so the audio
+            # preferences are applied as stream filters (never re-encoded).
+            opts['format'] = build_video_format_expression(options)
+            _apply_codec_preference(opts, options)
 
             container = options.video_format.lower()
             opts['merge_output_format'] = container
