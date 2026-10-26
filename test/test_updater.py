@@ -411,7 +411,14 @@ def test_update_settings_roundtrip_and_schedule(tmp_path):
     settings.save()
     loaded = UpdateSettings.load()
     assert loaded.auto_check_updates is True
+    assert loaded.auto_check_periodic is False
     assert loaded.channel == 'stable'
+
+    loaded.auto_check_periodic = True
+    loaded.save()
+    assert UpdateSettings.load().auto_check_periodic is True
+    loaded.auto_check_periodic = False
+    loaded.save()
 
     loaded.mark_checked(when=datetime.now(timezone.utc) - timedelta(hours=13))
     loaded.save()
@@ -434,6 +441,34 @@ def test_update_settings_skip_and_invalid_file(tmp_path):
     (tmp_path / 'data').mkdir(parents=True, exist_ok=True)
     (tmp_path / 'data' / 'settings.json').write_text('not-json', encoding='utf-8')
     assert UpdateSettings.load().auto_check_updates is True
+    assert UpdateSettings.load().auto_check_periodic is False
+
+
+@pytest.mark.skipif(sys.platform != 'win32', reason='the update helper is windows-only')
+def test_launch_helper_never_uses_detached_process(tmp_path, monkeypatch):
+    """DETACHED_PROCESS makes PowerShell exit without running the script."""
+    import subprocess
+
+    script = tmp_path / 'apply-update.ps1'
+    script.write_text('Write-UpdateLog "ran"', encoding='utf-8')
+    captured: dict = {}
+
+    class _Proc:
+        pid = 4242
+
+    def fake_popen(args, **kwargs):
+        captured['args'] = list(args)
+        captured['creationflags'] = kwargs.get('creationflags', 0)
+        return _Proc()
+
+    monkeypatch.setattr(updater.subprocess, 'Popen', fake_popen)
+    updater._launch_helper(script)
+
+    flags = captured['creationflags']
+    assert flags & subprocess.CREATE_NO_WINDOW
+    assert not flags & subprocess.DETACHED_PROCESS
+    assert '-File' in captured['args']
+    assert str(script) in captured['args']
 
 
 def test_cleanup_update_cache_removes_old_files(tmp_path):

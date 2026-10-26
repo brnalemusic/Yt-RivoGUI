@@ -428,3 +428,53 @@ def test_automatic_check_error_keeps_banner_hidden(window):
     )
     assert window._update_state == 'hidden'
     assert window.update_banner.isHidden()
+
+
+def test_automatic_check_is_silent_and_manual_shows_checking(window, monkeypatch):
+    from app.gui import UpdateCheckWorker
+
+    # no network in tests: the worker is created but never started
+    monkeypatch.setattr(UpdateCheckWorker, 'start', lambda self: None)
+    window._allow_update_check = True
+    window.update_settings.auto_check_updates = True
+
+    window._maybe_auto_update_check()
+    assert window._update_state == 'hidden'
+    assert window.update_banner.isHidden()
+    assert window._update_manual_check is False
+
+    window._manual_update_check()
+    assert window._update_state == 'checking'
+    assert not window.update_banner.isHidden()
+    assert window.update_title.text() == window.i18n('update_checking').lower()
+
+
+def test_periodic_auto_check_is_opt_in_and_hourly(qt_app, isolated_data_dir):
+    from app.gui import AUTO_CHECK_INTERVAL_MS, MainWindow
+    from app.updater import UpdateSettings
+
+    win = MainWindow(allow_update_check=True)
+    try:
+        # disable the startup check while the test drives the timer itself
+        win.chk_auto_update.setChecked(False)
+        assert win.update_settings.auto_check_periodic is False
+        assert not win.auto_update_timer.isActive()
+
+        win.chk_auto_periodic.setChecked(True)
+        assert UpdateSettings.load().auto_check_periodic is True
+        assert not win.auto_update_timer.isActive()  # needs automatic checks too
+
+        win.update_settings.auto_check_updates = True
+        win._refresh_auto_check_timer()
+        assert win.auto_update_timer.isActive()
+        assert win.auto_update_timer.interval() == AUTO_CHECK_INTERVAL_MS
+        assert AUTO_CHECK_INTERVAL_MS == 60 * 60 * 1000
+
+        win.chk_auto_periodic.setChecked(False)
+        assert not win.auto_update_timer.isActive()
+        assert UpdateSettings.load().auto_check_periodic is False
+    finally:
+        win.update_settings.auto_check_updates = False
+        win.close()
+        win.deleteLater()
+        qt_app.processEvents()

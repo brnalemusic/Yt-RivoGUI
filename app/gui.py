@@ -51,6 +51,11 @@ PHASE_HOME = 0       # hero: paste a link
 PHASE_CONFIGURE = 1  # detected media + accordion settings
 PHASE_PROGRESS = 2   # download progress & logs
 
+# update checks: one silent check shortly after startup, plus an opt-in hourly
+# background re-check (see ``chk_auto_periodic`` in the preferences drawer).
+AUTO_CHECK_STARTUP_DELAY_MS = 2_500
+AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1000
+
 _QWIDGETSIZE_MAX = 16777215
 
 
@@ -375,11 +380,11 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(500, self._prefill_from_clipboard)
 
         self.auto_update_timer = QTimer(self)
-        self.auto_update_timer.setInterval(12 * 60 * 60 * 1000)
+        self.auto_update_timer.setInterval(AUTO_CHECK_INTERVAL_MS)
         self.auto_update_timer.timeout.connect(self._maybe_auto_update_check)
         if self._allow_update_check:
-            self.auto_update_timer.start()
-            QTimer.singleShot(2500, self._maybe_auto_update_check)
+            self._refresh_auto_check_timer()
+            QTimer.singleShot(AUTO_CHECK_STARTUP_DELAY_MS, self._maybe_auto_update_check)
 
     # ------------------------------------------------------------------
     # ui construction
@@ -1069,6 +1074,18 @@ class MainWindow(QMainWindow):
         auto_update_row.addStretch(1)
         drawer_layout.addLayout(auto_update_row)
 
+        periodic_update_row = QHBoxLayout()
+        periodic_update_row.setContentsMargins(6, 2, 6, 2)
+        self.chk_auto_periodic = QCheckBox('')
+        self.chk_auto_periodic.setChecked(self.update_settings.auto_check_periodic)
+        self.chk_auto_periodic.setEnabled(
+            self._allow_update_check and self.update_settings.auto_check_updates
+        )
+        self.chk_auto_periodic.toggled.connect(self._on_auto_periodic_toggled)
+        periodic_update_row.addWidget(self.chk_auto_periodic)
+        periodic_update_row.addStretch(1)
+        drawer_layout.addLayout(periodic_update_row)
+
         self.drawer_group_system = QLabel(self.i18n('drawer_system').lower())
         self.drawer_group_system.setObjectName('DrawerGroup')
         drawer_layout.addWidget(self.drawer_group_system)
@@ -1330,6 +1347,7 @@ class MainWindow(QMainWindow):
         self.eta_box.label_widget.setText(self.i18n('eta_label').lower())
         self.size_box.label_widget.setText(self.i18n('size_label').lower())
         self.chk_auto_update.setText(self.i18n('opt_auto_check_updates').lower())
+        self.chk_auto_periodic.setText(self.i18n('opt_auto_check_periodic').lower())
 
         if self.log_view.isVisible():
             self.btn_toggle_logs.setText(self.i18n('toggle_logs_hide').lower())
@@ -1561,6 +1579,8 @@ class MainWindow(QMainWindow):
         self._start_update_check()
 
     def _maybe_auto_update_check(self) -> None:
+        # Automatic checks are driven by the timers alone: the startup check
+        # must always run, and the background one only when it is enabled.
         if not self._allow_update_check or not self.update_settings.auto_check_updates:
             return
         if self.download_thread and self.download_thread.isRunning():
@@ -1568,8 +1588,6 @@ class MainWindow(QMainWindow):
         if self.update_check_thread and self.update_check_thread.isRunning():
             return
         if self.update_download_thread and self.update_download_thread.isRunning():
-            return
-        if not self.update_settings.should_check():
             return
         self._update_manual_check = False
         self._start_update_check()
@@ -1656,8 +1674,28 @@ class MainWindow(QMainWindow):
     def _on_auto_update_toggled(self, checked: bool) -> None:
         self.update_settings.auto_check_updates = bool(checked)
         self.update_settings.save()
+        self.chk_auto_periodic.setEnabled(bool(checked) and self._allow_update_check)
+        self._refresh_auto_check_timer()
         if checked and self._allow_update_check:
             QTimer.singleShot(1000, self._maybe_auto_update_check)
+
+    def _on_auto_periodic_toggled(self, checked: bool) -> None:
+        self.update_settings.auto_check_periodic = bool(checked)
+        self.update_settings.save()
+        self._refresh_auto_check_timer()
+
+    def _refresh_auto_check_timer(self) -> None:
+        """Runs the hourly background check only when it is opted into."""
+        enabled = (
+            self._allow_update_check
+            and self.update_settings.auto_check_updates
+            and self.update_settings.auto_check_periodic
+        )
+        if enabled:
+            if not self.auto_update_timer.isActive():
+                self.auto_update_timer.start()
+        elif self.auto_update_timer.isActive():
+            self.auto_update_timer.stop()
 
     def _on_update_install_clicked(self) -> None:
         if self._update_state in {'ready', 'error'} and self._update_path:

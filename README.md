@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.0.0-10B981?style=flat-square" alt="Version 0.1.0.0" />
+  <img src="https://img.shields.io/badge/version-0.1.0.1-10B981?style=flat-square" alt="Version 0.1.0.1" />
   <img src="https://img.shields.io/badge/python-3.11%2B-22C55E?style=flat-square" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/framework-pyside6-34D399?style=flat-square" alt="PySide6" />
   <img src="https://img.shields.io/badge/platform-windows%20(10%20%2F%2011%20x64)-10B981?style=flat-square" alt="Platform" />
@@ -92,7 +92,7 @@ the installer registers the app in windows settings, so it can be removed from t
 ### option b: portable release
 
 1. download either:
-   - `Yt-RivoGUI-v0.1.0.0-windows.zip` (recommended; avoids browser heuristic download warnings).
+   - `Yt-RivoGUI-v0.1.0.1-windows.zip` (recommended; avoids browser heuristic download warnings).
    - `Yt-RivoGUI.exe` (direct standalone executable).
    from the official [releases](https://github.com/brnalemusic/Yt-RivoGUI/releases).
 2. extract the `.zip` (if downloaded) and run `Yt-RivoGUI.exe` directly. no python or installation required. portable builds also update themselves in place.
@@ -120,15 +120,15 @@ source checkouts never replace their own files. when a new release exists, the u
 
 ## automatic updates
 
-the app checks the stable github release channel on startup (at most once every 12 hours) and whenever the version badge in the header is clicked. when a newer release is available, a banner shows the version and a link to the release notes.
+the app checks the stable github release channel once shortly after startup — silently, without opening any window — and whenever the version badge in the header is clicked (the manual check shows the "checking for updates..." banner). an opt-in background re-check also runs every hour while the app is open. when a newer release is available, the banner appears on its own with the version and a link to the release notes.
 
 - **installed builds** download the installer, verify its sha-256 digest and size, then run it silently after the app closes. the updater helper restarts the app on the new version.
-- **portable builds** download the new executable, verify it, replace the current file through a detached powershell helper (with backup and rollback), and relaunch.
+- **portable builds** download the new executable, verify it, replace the current file through a hidden powershell helper (with backup and rollback), and relaunch.
 - **source checkouts** never self-update; the banner points to the releases page.
 - an update is only executed when its sha-256 digest matches `latest.json`. older releases without a manifest fall back to the github api plus `SHA256SUMS.txt`. assets without a valid checksum are blocked.
 - update checks and installs are blocked while a media download is running.
 
-automatic checks can be disabled with the `check for updates automatically` toggle in the log panel. command-line equivalents:
+the startup check can be disabled with the `check for updates automatically` toggle in the preferences drawer, and the hourly background re-check is off by default and enabled with the `re-check for updates every hour` toggle right below it. command-line equivalents:
 
 ```bash
 # check github and print the result without opening the gui

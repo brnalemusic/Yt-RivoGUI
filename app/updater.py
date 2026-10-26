@@ -241,6 +241,7 @@ class UpdateSettings:
     """Small, user-scoped updater preferences persisted as JSON."""
 
     auto_check_updates: bool = True
+    auto_check_periodic: bool = False
     last_check_utc: str | None = None
     skipped_version: str | None = None
     channel: str = 'stable'
@@ -254,6 +255,7 @@ class UpdateSettings:
                 return cls()
             return cls(
                 auto_check_updates=bool(raw.get('auto_check_updates', True)),
+                auto_check_periodic=bool(raw.get('auto_check_periodic', False)),
                 last_check_utc=_as_optional_str(raw.get('last_check_utc')),
                 skipped_version=_as_optional_str(raw.get('skipped_version')),
                 channel=_as_optional_str(raw.get('channel')) or 'stable',
@@ -1119,9 +1121,12 @@ def _launch_helper(script_path: Path) -> None:
     powershell = shutil.which('powershell.exe') or shutil.which('pwsh.exe')
     if not powershell:
         raise UpdateError('PowerShell was not found')
-    flags = 0
-    flags |= getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-    flags |= getattr(subprocess, 'DETACHED_PROCESS', 0)
+    # DETACHED_PROCESS must never be passed here: Windows PowerShell 5.1
+    # starts under it and exits with code 0 *without executing the script*,
+    # so the update helper silently did nothing (the app closed and the old
+    # version stayed). CREATE_NO_WINDOW alone keeps the helper invisible and
+    # it keeps running after the application exits.
+    flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
     try:
         subprocess.Popen(
             [
