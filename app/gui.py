@@ -43,6 +43,7 @@ from app.backend import (
     clean_ansi,
     get_default_download_dir,
 )
+from app.history import DownloadHistoryManager
 from app.i18n import I18nManager
 from app.styles import MINIMAL_MONO_STYLESHEET  # noqa: F401  (re-exported for compatibility)
 from app.updater import (
@@ -353,6 +354,7 @@ class MainWindow(QMainWindow):
 
         # State variables
         self.output_dir = str(get_default_download_dir())
+        self.history_manager = DownloadHistoryManager()
         self.download_thread: DownloadWorker | None = None
         self.metadata_thread: MetadataWorker | None = None
         self.last_fetched_url = ''
@@ -1112,6 +1114,29 @@ class MainWindow(QMainWindow):
         self.btn_drawer_folder.clicked.connect(self._open_output_dir)
         drawer_layout.addWidget(self.btn_drawer_folder)
 
+        # History group in drawer
+        self.drawer_group_history = QLabel(self.i18n('drawer_history').lower())
+        self.drawer_group_history.setObjectName('DrawerGroup')
+        drawer_layout.addWidget(self.drawer_group_history)
+
+        self.history_scroll = QScrollArea()
+        self.history_scroll.setWidgetResizable(True)
+        self.history_scroll.setFixedHeight(220)
+        self.history_scroll.setStyleSheet('QScrollArea { background-color: transparent; border: none; }')
+        self.history_container = QWidget()
+        self.history_container.setStyleSheet('background-color: transparent;')
+        self.history_layout = QVBoxLayout(self.history_container)
+        self.history_layout.setContentsMargins(0, 0, 0, 0)
+        self.history_layout.setSpacing(6)
+        self.history_scroll.setWidget(self.history_container)
+        drawer_layout.addWidget(self.history_scroll)
+
+        self.btn_clear_history = QPushButton(self.i18n('history_clear_all').lower())
+        self.btn_clear_history.setObjectName('DrawerItem')
+        self.btn_clear_history.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_clear_history.clicked.connect(self._on_clear_history)
+        drawer_layout.addWidget(self.btn_clear_history)
+
         self.drawer_group_preferences = QLabel(self.i18n('drawer_preferences').lower())
         self.drawer_group_preferences.setObjectName('DrawerGroup')
         drawer_layout.addWidget(self.drawer_group_preferences)
@@ -1219,6 +1244,7 @@ class MainWindow(QMainWindow):
 
     def _open_drawer(self) -> None:
         self._drawer_open = True
+        self._refresh_history_ui()
         self.drawer_overlay.setGeometry(0, 0, self.width(), self.height())
         self.drawer.setGeometry(-self.drawer.width(), 0, self.drawer.width(), self.height())
         self.drawer_overlay.setVisible(True)
@@ -1255,6 +1281,113 @@ class MainWindow(QMainWindow):
         self._set_phase(PHASE_PROGRESS)
         if not self.log_view.isVisible():
             self._toggle_logs()
+
+    # ------------------------------------------------------------------
+    # history UI rendering & actions
+    # ------------------------------------------------------------------
+    def _refresh_history_ui(self) -> None:
+        """Rebuilds the history scroll area cards from history_manager."""
+        if not hasattr(self, 'history_layout'):
+            return
+
+        # Clear existing items in history_layout
+        while self.history_layout.count():
+            child = self.history_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        items = self.history_manager.load()
+        if not items:
+            lbl_empty = QLabel(self.i18n('history_empty').lower())
+            lbl_empty.setStyleSheet('color: #8b949e; font-size: 11px; padding: 12px 6px;')
+            lbl_empty.setWordWrap(True)
+            self.history_layout.addWidget(lbl_empty)
+            self.btn_clear_history.setEnabled(False)
+            return
+
+        self.btn_clear_history.setEnabled(True)
+        for item in items:
+            card = QFrame()
+            card.setObjectName('HistoryCard')
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(6, 6, 6, 6)
+            card_layout.setSpacing(4)
+
+            title_lbl = QLabel(str(item.get('title', '')).lower())
+            title_lbl.setObjectName('HistoryTitle')
+            title_lbl.setWordWrap(True)
+            card_layout.addWidget(title_lbl)
+
+            mode_str = self.i18n(f'mode_{item.get("mode", "video")}').lower()
+            size_str = str(item.get('file_size', '')).lower()
+            meta_text = f'{mode_str}' + (f' · {size_str}' if size_str else '')
+            meta_lbl = QLabel(meta_text)
+            meta_lbl.setObjectName('HistoryMeta')
+            card_layout.addWidget(meta_lbl)
+
+            btn_row = QHBoxLayout()
+            btn_row.setContentsMargins(0, 2, 0, 0)
+            btn_row.setSpacing(4)
+
+            file_path = item.get('file_path', '')
+            file_exists = os.path.exists(file_path) if file_path else False
+
+            btn_file = QPushButton(self.i18n('history_open_file').lower())
+            btn_file.setObjectName('HistoryActionButton')
+            btn_file.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_file.setEnabled(file_exists)
+            btn_file.clicked.connect(lambda _, p=file_path: self._on_history_open_file(p))
+            btn_row.addWidget(btn_file)
+
+            btn_folder = QPushButton(self.i18n('history_open_folder').lower())
+            btn_folder.setObjectName('HistoryActionButton')
+            btn_folder.setCursor(Qt.CursorShape.PointingHandCursor)
+            folder_path = file_path if os.path.isdir(file_path) else os.path.dirname(file_path)
+            btn_folder.setEnabled(bool(folder_path and os.path.exists(folder_path)))
+            btn_folder.clicked.connect(lambda _, p=folder_path: self._on_history_open_folder(p))
+            btn_row.addWidget(btn_folder)
+
+            btn_redownload = QPushButton(self.i18n('history_redownload').lower())
+            btn_redownload.setObjectName('HistoryActionButton')
+            btn_redownload.setCursor(Qt.CursorShape.PointingHandCursor)
+            item_url = item.get('url', '')
+            btn_redownload.setEnabled(bool(item_url))
+            btn_redownload.clicked.connect(lambda _, u=item_url: self._on_history_redownload(u))
+            btn_row.addWidget(btn_redownload)
+
+            btn_remove = QPushButton(self.i18n('history_remove').lower())
+            btn_remove.setObjectName('HistoryActionButton')
+            btn_remove.setCursor(Qt.CursorShape.PointingHandCursor)
+            item_id = item.get('id', '')
+            btn_remove.clicked.connect(lambda _, i=item_id: self._on_history_remove(i))
+            btn_row.addWidget(btn_remove)
+
+            card_layout.addLayout(btn_row)
+            self.history_layout.addWidget(card)
+
+        self.history_layout.addStretch(1)
+
+    def _on_history_open_file(self, file_path: str) -> None:
+        if file_path and os.path.exists(file_path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(file_path))
+
+    def _on_history_open_folder(self, folder_path: str) -> None:
+        if folder_path and os.path.exists(folder_path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder_path))
+
+    def _on_history_redownload(self, url: str) -> None:
+        self._close_drawer()
+        self._start_new_download_flow()
+        if url:
+            self.url_input.setText(url)
+
+    def _on_history_remove(self, entry_id: str) -> None:
+        if self.history_manager.remove_entry(entry_id):
+            self._refresh_history_ui()
+
+    def _on_clear_history(self) -> None:
+        self.history_manager.clear_all()
+        self._refresh_history_ui()
 
     # ------------------------------------------------------------------
     # guided-flow phases & summaries
@@ -1579,6 +1712,8 @@ class MainWindow(QMainWindow):
         # drawer
         self.drawer_brand.setText(self.i18n('app_title').lower())
         self.drawer_group_downloads.setText(self.i18n('drawer_downloads').lower())
+        self.drawer_group_history.setText(self.i18n('drawer_history').lower())
+        self.btn_clear_history.setText(self.i18n('history_clear_all').lower())
         self.drawer_group_preferences.setText(self.i18n('drawer_preferences').lower())
         self.drawer_group_system.setText(self.i18n('drawer_system').lower())
         self.btn_drawer_new.setText(self.i18n('drawer_new_download').lower())
@@ -1586,6 +1721,7 @@ class MainWindow(QMainWindow):
         self.btn_drawer_updates.setText(self.i18n('drawer_check_updates').lower())
         self.btn_drawer_logs.setText(self.i18n('drawer_show_logs').lower())
         self.drawer_version.setText(f'v{__version__}')
+        self._refresh_history_ui()
 
         self._sync_continue_button_width()
         self._render_summaries()
@@ -2043,6 +2179,49 @@ class MainWindow(QMainWindow):
         self.i18n.set_language(lang_code)
         self.apply_translations()
 
+    def _get_selected_mode(self) -> str:
+        if hasattr(self, 'radio_audio') and self.radio_audio.isChecked():
+            return 'audio'
+        if hasattr(self, 'radio_split') and self.radio_split.isChecked():
+            return 'split'
+        if hasattr(self, 'radio_thumbnail') and self.radio_thumbnail.isChecked():
+            return 'thumbnail_only'
+        return 'video'
+
+    def _resolve_download_path(self, info: dict) -> str | None:
+        """Helper to safely determine the completed download output path."""
+        if not info:
+            return None
+
+        # 1. Direct path fields provided by yt-dlp / backend
+        for k in ('_filename', 'filename', 'video_path', 'audio_path'):
+            p = info.get(k)
+            if p and Path(p).exists():
+                return str(p)
+
+        # 2. Extract from requested_downloads list (if yt-dlp populated it)
+        reqs = info.get('requested_downloads')
+        if reqs and isinstance(reqs, list):
+            for req in reqs:
+                if isinstance(req, dict):
+                    p = req.get('_filename') or req.get('filename')
+                    if p and Path(p).exists():
+                        return str(p)
+
+        # 3. Playlist / entries handling: check first child entry
+        entries = info.get('entries')
+        if entries and isinstance(entries, list):
+            for entry in entries:
+                if isinstance(entry, dict):
+                    res = self._resolve_download_path(entry)
+                    if res:
+                        # Return playlist subfolder if available
+                        parent = Path(res).parent
+                        return str(parent) if parent.exists() else res
+
+        # 4. Fallback to output_dir
+        return self.output_dir if Path(self.output_dir).exists() else None
+
     def _on_mode_changed(self) -> None:
         self._update_controls_visibility()
 
@@ -2498,12 +2677,24 @@ class MainWindow(QMainWindow):
             self.status_label.setText(self.i18n('status_finished').lower())
         self.status_dot.setStyleSheet('color: #10B981; font-size: 13px;')
 
-        filename = info.get('_filename') or info.get('filename') or info.get('video_path') or info.get('audio_path')
+        filename = self._resolve_download_path(info)
         if filename and Path(filename).exists():
             self.last_downloaded_file = str(filename)
             self.btn_open_file.setVisible(True)
 
         title = info.get('title', 'arquivo')
+        mode = self._get_selected_mode()
+        file_path_str = str(filename) if filename else self.output_dir
+        file_size_str = self.size_box.val_widget.text() or ''
+        self.history_manager.add_entry(
+            title=title,
+            url=self.last_fetched_url or info.get('webpage_url', ''),
+            file_path=file_path_str,
+            mode=mode,
+            file_size=file_size_str,
+        )
+        self._refresh_history_ui()
+
         self.log(f'✔ concluído com sucesso: {title}')
 
     @Slot(str)

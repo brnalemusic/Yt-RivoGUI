@@ -562,6 +562,43 @@ QLabel#DrawerVersion {
     padding: 6px 8px;
 }
 
+/* HISTORY ITEM CARDS IN DRAWER */
+QFrame#HistoryCard {
+    background-color: #0d1117;
+    border: 1px solid #21262d;
+    border-radius: 6px;
+    padding: 4px;
+}
+QFrame#HistoryCard:hover {
+    border-color: #30363d;
+}
+QLabel#HistoryTitle {
+    color: #f0f6fc;
+    font-size: 11px;
+    font-weight: 600;
+}
+QLabel#HistoryMeta {
+    color: #8b949e;
+    font-size: 10px;
+}
+QPushButton#HistoryActionButton {
+    background-color: transparent;
+    border: 1px solid #21262d;
+    border-radius: 4px;
+    color: #c9d1d9;
+    padding: 2px 6px;
+    font-size: 10px;
+}
+QPushButton#HistoryActionButton:hover {
+    background-color: #161b22;
+    color: #ffffff;
+    border-color: #34d399;
+}
+QPushButton#HistoryActionButton:disabled {
+    color: #484f58;
+    border-color: #161b22;
+}
+
 /* UPDATE BANNER */
 QFrame#UpdateBanner {
     background-color: #0e2a1d;
